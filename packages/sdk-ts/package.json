@@ -24,7 +24,12 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
+  "dependencies": {
+    "viem": "^2.30.0",
+    "zod": "^3.24.0"
+  },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsup": "^8.3.0",
     "typescript": "^5.5.4"
   },

@@ -1,37 +1,53 @@
-// Swarmwage Agent SDK — TypeScript reference implementation
+// Swarmwage Agent SDK — public exports
 // Protocol: swarmwage/v0.1
 // License: MIT
 //
 // Spec: https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/SPEC.md
 
-export const PROTOCOL_VERSION = "swarmwage/v0.1" as const;
+export { AgentClient, type AgentClientOptions } from "./client.js";
+export { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
+export {
+  createBudgetState,
+  assertCanSpend,
+  recordSpend,
+  isExpired as isBudgetExpired,
+  remaining as remainingBudget,
+  type BudgetState,
+} from "./budget.js";
+export { verify, registerVerifier, getVerifier, type Verifier } from "./verification.js";
+export { createTelemetry, DEFAULT_TELEMETRY_URL } from "./telemetry.js";
 
-export const DEFAULT_REGISTRY_URL = "https://api.swarmwage.com";
-export const DEFAULT_TELEMETRY_URL = "https://api.swarmwage.com/telemetry";
+export {
+  PROTOCOL_VERSION,
+  type ProtocolVersion,
+  type AgentId,
+  type CapabilityId,
+  type UsdcAmount,
+  type Hex,
+  type Listing,
+  type Reputation,
+  type SearchRequest,
+  type SearchResponse,
+  type SearchResultEntry,
+  type BudgetToken,
+  type HireRequest,
+  type HireResponse,
+  type AsyncHireResponse,
+  type JobStatus,
+  type Receipt,
+  type RatingRequest,
+  type Stars,
+  type VerificationCheck,
+  type VerificationResult,
+} from "./types.js";
 
-// Core types — full API coming in subsequent commits.
-// See ../README.md for roadmap.
-
-export type AgentId = `0x${string}`;
-
-export type CapabilityId = string;
-
-export type UsdcAmount = string; // USDC in human-readable decimal string, e.g. "1.50"
-
-export interface Listing {
-  agent_id: AgentId;
-  capability: CapabilityId;
-  price_usdc: UsdcAmount;
-  max_latency_ms: number;
-  first_call_free: boolean;
-  endpoint: string;
-}
-
-export interface Reputation {
-  success_rate: number;
-  avg_latency_ms: number;
-  last_30d_hire_count: number;
-  avg_stars: number;
-  total_ratings: number;
-  claimed: boolean;
-}
+export {
+  SwarmwageError,
+  TransportError,
+  BudgetExceededError,
+  BudgetExpiredError,
+  VerificationFailedError,
+  HireRefusedError,
+  InvalidProtocolVersionError,
+  PaymentFailedError,
+} from "./errors.js";
