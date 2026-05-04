@@ -111,6 +111,8 @@ export type BudgetToken = z.infer<typeof BudgetTokenSchema>;
 export interface HireRequest {
   /** Target seller agent. If omitted, SDK picks the best match. */
   agent_id?: AgentId;
+  /** Seller endpoint. If omitted, SDK resolves via search. */
+  endpoint?: string;
   capability: CapabilityId;
   params: Record<string, unknown>;
   max_price_usdc: UsdcAmount;

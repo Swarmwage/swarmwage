@@ -113,33 +113,30 @@ export class AgentClient {
   async hire(req: HireRequest): Promise<HireResponse> {
     if (this.budgetState) assertCanSpend(this.budgetState, req.max_price_usdc);
 
-    // Resolve target seller — search if not specified.
+    // Resolve target seller endpoint:
+    //   - explicit endpoint provided -> use it
+    //   - else search by capability (filtered by agent_id if provided)
     let sellerId = req.agent_id;
-    let endpoint: string | undefined;
-    if (!sellerId) {
+    let endpoint = req.endpoint;
+    if (!endpoint) {
       const candidates = await this.search({
         capability: req.capability,
         max_price_usdc: req.max_price_usdc,
         max_latency_ms: req.max_latency_ms,
-        limit: 1,
+        limit: sellerId ? 50 : 1,
       });
-      const top = candidates[0];
+      const top = sellerId
+        ? candidates.find((c) => c.agent_id === sellerId)
+        : candidates[0];
       if (!top) {
-        throw new HireRefusedError(`No agents found for capability ${req.capability}`);
+        throw new HireRefusedError(
+          sellerId
+            ? `Agent ${sellerId} has no listing for ${req.capability}`
+            : `No agents found for capability ${req.capability}`,
+        );
       }
       sellerId = top.agent_id;
       endpoint = top.listing.endpoint;
-    } else {
-      // Look up endpoint via reputation lookup
-      const rep = await this.getReputation(sellerId);
-      // SearchResultEntry would be cleaner; for v0.0.1 we require explicit endpoint
-      // when the agent_id is given without a prior search.
-      endpoint = (rep as unknown as { endpoint?: string }).endpoint;
-      if (!endpoint) {
-        throw new HireRefusedError(
-          `No endpoint for agent ${sellerId}; use search() to obtain a listing first`,
-        );
-      }
     }
 
     const nonce = req.nonce ?? crypto.randomUUID();
@@ -158,7 +155,7 @@ export class AgentClient {
     this.telemetry.send({
       kind: "hire_attempt",
       capability: req.capability,
-      seller_id: sellerId,
+      seller_id: sellerId ?? null,
     });
 
     const t0 = Date.now();

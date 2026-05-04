@@ -1,0 +1,24 @@
+{
+  "name": "@swarmwage/example-demo-buyer",
+  "version": "0.0.1",
+  "private": true,
+  "description": "End-to-end demo — a buyer agent searches the Swarmwage registry, hires a seller, and saves the result",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@swarmwage/agent-sdk": "workspace:*",
+    "viem": "^2.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -28,9 +28,8 @@ const builtinVerifiers: Record<string, Verifier> = {
           output.height === input.height,
       ),
       check(
-        "valid_png_magic",
-        typeof output.image_b64 === "string" &&
-          decodeBase64Prefix(output.image_b64).startsWith("\x89PNG"),
+        "valid_image_magic",
+        typeof output.image_b64 === "string" && isValidImageMagic(output.image_b64),
       ),
     ];
     return result(checks);
@@ -137,4 +136,17 @@ function decodeBase64Prefix(b64: string): string {
   } catch {
     return "";
   }
+}
+
+function isValidImageMagic(b64: string): boolean {
+  const prefix = decodeBase64Prefix(b64);
+  // PNG: 89 50 4E 47
+  if (prefix.startsWith("\x89PNG")) return true;
+  // JPEG: FF D8 FF
+  if (prefix.startsWith("\xff\xd8\xff")) return true;
+  // WebP: RIFF....WEBP
+  if (prefix.startsWith("RIFF") && prefix.slice(8, 12) === "WEBP") return true;
+  // GIF
+  if (prefix.startsWith("GIF87a") || prefix.startsWith("GIF89a")) return true;
+  return false;
 }

@@ -15,6 +15,25 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  examples/demo-buyer:
+    dependencies:
+      '@swarmwage/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk-ts
+      viem:
+        specifier: ^2.30.0
+        version: 2.48.8(typescript@5.9.3)(zod@3.25.76)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   examples/seller-image-gen:
     dependencies:
       '@hono/node-server':
