@@ -43,6 +43,9 @@ Thumbs.db
 # Internal Claude scratch
 .claude/
 
+# Demo output artifacts
+demo-output.*
+
 # Internal strategy docs (do NOT publish — contains viral tactics, pricing, moat strategy)
 PLAN.md
 CLAUDE.md
