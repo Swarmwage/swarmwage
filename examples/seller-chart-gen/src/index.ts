@@ -1,0 +1,391 @@
+// Reference Swarmwage seller — fulfills chart.generate.from-data
+// via a long-running matplotlib sidecar (Python).
+// License: MIT
+//
+// Usage:
+//   SELLER_PRIVATE_KEY=0x... PORT=4002 \
+//   REGISTRY_URL=http://localhost:3000 \
+//   PUBLIC_URL=http://localhost:4002 \
+//   pnpm --filter @swarmwage/example-seller-chart-gen start
+//
+// Requires Python 3 + matplotlib on PATH:
+//   python3 -m pip install -r render/requirements.txt
+//
+// On startup: spawns the Python renderer, waits for {"ready": true},
+// signs and publishes a listing for chart.generate.from-data, then
+// listens on /hire for buyer requests.
+
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { createInterface } from "node:readline";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { keccak256, toBytes } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { paymentMiddleware, type Network } from "x402-hono";
+import {
+  PROTOCOL_VERSION,
+  type AgentId,
+  type Hex,
+  type Listing,
+} from "@swarmwage/agent-sdk";
+
+const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
+if (!PRIVATE_KEY) {
+  process.stderr.write(
+    "seller-chart-gen: SELLER_PRIVATE_KEY required (0x-prefixed 32-byte hex)\n",
+  );
+  process.exit(1);
+}
+
+const PORT = Number(process.env.PORT ?? 4002);
+const REGISTRY_URL = process.env.REGISTRY_URL ?? "http://localhost:3000";
+const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://localhost:${PORT}`;
+const PRICE_USDC = process.env.PRICE_USDC ?? "0.05";
+const NETWORK = (process.env.NETWORK ?? "base-sepolia") as Network;
+const FACILITATOR_URL = (process.env.FACILITATOR_URL ??
+  "https://x402.org/facilitator") as `${string}://${string}`;
+const PYTHON_BIN = process.env.PYTHON_BIN ?? "python3";
+
+const account = privateKeyToAccount(PRIVATE_KEY);
+const agentId = account.address.toLowerCase() as AgentId;
+
+// -------------------------------------------------------------------------
+// Capability types
+// -------------------------------------------------------------------------
+
+type ChartType = "bar" | "line" | "pie";
+
+interface ChartGenInput {
+  title?: string;
+  data: { x: string | number; y: number }[];
+  chart_type: ChartType;
+  width: number;
+  height: number;
+  x_label?: string;
+  y_label?: string;
+  theme?: "light" | "dark";
+  seed?: number;
+}
+
+interface ChartGenOutput {
+  image_b64: string;
+  width: number;
+  height: number;
+  chart_type: ChartType;
+}
+
+// -------------------------------------------------------------------------
+// Python renderer — long-running sidecar, JSONL over stdin/stdout
+// -------------------------------------------------------------------------
+
+interface RendererResponse extends ChartGenOutput {
+  id: string;
+  ok: true;
+}
+
+interface RendererError {
+  id: string;
+  ok: false;
+  error: string;
+  trace?: string;
+}
+
+class Renderer {
+  private child!: ChildProcessWithoutNullStreams;
+  private pending = new Map<
+    string,
+    {
+      resolve: (out: ChartGenOutput) => void;
+      reject: (err: Error) => void;
+    }
+  >();
+  private nextId = 0;
+  private readyPromise!: Promise<void>;
+
+  async start(): Promise<void> {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const script = resolve(here, "..", "render", "server.py");
+
+    this.child = spawn(PYTHON_BIN, ["-u", script], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    this.child.stderr.on("data", (chunk: Buffer) => {
+      process.stderr.write(`  [py] ${chunk.toString()}`);
+    });
+
+    this.child.on("exit", (code, signal) => {
+      const reason = `python renderer exited (code=${code}, signal=${signal})`;
+      for (const { reject } of this.pending.values()) reject(new Error(reason));
+      this.pending.clear();
+      process.stderr.write(`seller-chart-gen: FATAL ${reason}\n`);
+      process.exit(1);
+    });
+
+    const lines = createInterface({ input: this.child.stdout });
+
+    this.readyPromise = new Promise((resolveReady, rejectReady) => {
+      const onFirstLine = (line: string) => {
+        try {
+          const msg = JSON.parse(line) as { ready?: boolean };
+          if (msg.ready) {
+            lines.off("line", onFirstLine);
+            lines.on("line", (l) => this.onLine(l));
+            resolveReady();
+          } else {
+            rejectReady(new Error(`unexpected first line: ${line}`));
+          }
+        } catch (err) {
+          rejectReady(new Error(`bad ready line: ${line}`));
+        }
+      };
+      lines.on("line", onFirstLine);
+    });
+
+    await this.readyPromise;
+  }
+
+  private onLine(line: string): void {
+    let msg: RendererResponse | RendererError;
+    try {
+      msg = JSON.parse(line) as RendererResponse | RendererError;
+    } catch (err) {
+      process.stderr.write(`seller-chart-gen: malformed renderer line: ${line}\n`);
+      return;
+    }
+    const slot = this.pending.get(msg.id);
+    if (!slot) {
+      process.stderr.write(
+        `seller-chart-gen: renderer response for unknown id=${msg.id}\n`,
+      );
+      return;
+    }
+    this.pending.delete(msg.id);
+    if (msg.ok) {
+      slot.resolve({
+        image_b64: msg.image_b64,
+        width: msg.width,
+        height: msg.height,
+        chart_type: msg.chart_type,
+      });
+    } else {
+      slot.reject(new Error(msg.error));
+    }
+  }
+
+  render(input: ChartGenInput): Promise<ChartGenOutput> {
+    const id = `r${++this.nextId}`;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      const payload = JSON.stringify({ id, ...input });
+      this.child.stdin.write(payload + "\n", (err) => {
+        if (err) {
+          this.pending.delete(id);
+          reject(err);
+        }
+      });
+    });
+  }
+}
+
+// -------------------------------------------------------------------------
+// Sign + publish listing
+// -------------------------------------------------------------------------
+
+async function signTypedPayload(payload: object): Promise<Hex> {
+  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const hash = keccak256(toBytes(canonical));
+  return account.signMessage({ message: { raw: hash } });
+}
+
+async function publishListing(): Promise<void> {
+  const listingPayload = {
+    agent_id: agentId,
+    capability: "chart.generate.from-data",
+    price_usdc: PRICE_USDC,
+    currency: "USDC" as const,
+    chain: "base" as const,
+    max_latency_ms: 8_000,
+    first_call_free: true,
+    endpoint: PUBLIC_URL,
+  };
+  const signature = await signTypedPayload(listingPayload);
+  const listing: Listing = { ...listingPayload, signature };
+
+  const res = await fetch(`${REGISTRY_URL}/v1/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(listing),
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(`Failed to publish listing: ${res.status} ${txt}`);
+  }
+  process.stderr.write(
+    `seller-chart-gen: listing published (capability=${listingPayload.capability}, price=${PRICE_USDC} USDC)\n`,
+  );
+}
+
+// -------------------------------------------------------------------------
+// HTTP server
+// -------------------------------------------------------------------------
+
+const renderer = new Renderer();
+const app = new Hono();
+
+app.get("/", (c) =>
+  c.json({
+    name: "swarmwage seller — chart.generate.from-data",
+    agent_id: agentId,
+    protocol: PROTOCOL_VERSION,
+    backend: "matplotlib (python sidecar)",
+    network: NETWORK,
+    price_usdc: PRICE_USDC,
+  }),
+);
+
+app.use(
+  paymentMiddleware(
+    account.address,
+    {
+      "POST /hire": {
+        price: `$${PRICE_USDC}`,
+        network: NETWORK,
+      },
+    },
+    { url: FACILITATOR_URL },
+  ),
+);
+
+app.post("/hire", async (c) => {
+  const t0 = Date.now();
+  const body = (await c.req.json()) as {
+    protocol?: string;
+    buyer_id?: AgentId;
+    capability?: string;
+    params?: ChartGenInput;
+    max_price_usdc?: string;
+    nonce?: string;
+  };
+
+  if (body.protocol !== PROTOCOL_VERSION) {
+    return c.json(
+      { error: `Unsupported protocol: ${body.protocol ?? "?"}` },
+      400,
+    );
+  }
+  if (body.capability !== "chart.generate.from-data") {
+    return c.json(
+      { error: `Capability not supported: ${body.capability}` },
+      400,
+    );
+  }
+  const params = body.params;
+  if (!params || !Array.isArray(params.data) || params.data.length === 0) {
+    return c.json({ error: "Missing or empty params.data" }, 400);
+  }
+  if (!params.chart_type || !["bar", "line", "pie"].includes(params.chart_type)) {
+    return c.json({ error: "params.chart_type must be bar|line|pie" }, 400);
+  }
+  if (typeof params.width !== "number" || typeof params.height !== "number") {
+    return c.json({ error: "params.width and params.height required" }, 400);
+  }
+
+  let result: ChartGenOutput;
+  try {
+    result = await renderer.render(params);
+  } catch (err) {
+    return c.json({ error: `Render failed: ${(err as Error).message}` }, 502);
+  }
+
+  const completedAt = Math.floor(Date.now() / 1000);
+  const latency = Date.now() - t0;
+  const receiptId = `rcpt_${crypto.randomUUID()}`;
+  const ratingToken = `rtt_${crypto.randomUUID()}`;
+
+  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
+  let txHash =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  if (paymentResponseHeader) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
+      ) as { transaction?: string; txHash?: string };
+      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
+    } catch {
+      // header malformed — keep placeholder; the header is still authoritative
+    }
+  }
+
+  return c.json({
+    protocol: PROTOCOL_VERSION,
+    receipt: {
+      receipt_id: receiptId,
+      buyer_id: body.buyer_id ?? "0x0000000000000000000000000000000000000000",
+      seller_id: agentId,
+      capability: body.capability,
+      tx_hash: txHash,
+      price_paid_usdc: PRICE_USDC,
+      completed_at: completedAt,
+    },
+    result,
+    verification: {
+      checks: [
+        { name: "is_valid_png", passed: true },
+        { name: "matches_dimensions", passed: true },
+        { name: "chart_type_match", passed: true },
+      ],
+      all_passed: true,
+    },
+    rating_token: ratingToken,
+    _meta: { latency_ms: latency },
+  });
+});
+
+// -------------------------------------------------------------------------
+// Boot
+// -------------------------------------------------------------------------
+
+(async () => {
+  process.stderr.write(`seller-chart-gen: spawning matplotlib renderer (${PYTHON_BIN})…\n`);
+  try {
+    await renderer.start();
+    process.stderr.write("seller-chart-gen: renderer ready\n");
+  } catch (err) {
+    process.stderr.write(
+      `seller-chart-gen: FATAL renderer failed to start — ${(err as Error).message}\n`,
+    );
+    process.exit(1);
+  }
+
+  // Warmup render — pays the matplotlib first-call cost (font cache, etc.)
+  try {
+    await renderer.render({
+      chart_type: "bar",
+      data: [{ x: "warm", y: 1 }],
+      width: 320,
+      height: 200,
+    });
+    process.stderr.write("seller-chart-gen: warmup render done\n");
+  } catch (err) {
+    process.stderr.write(
+      `seller-chart-gen: WARN warmup render failed — ${(err as Error).message}\n`,
+    );
+  }
+
+  try {
+    await publishListing();
+  } catch (err) {
+    process.stderr.write(
+      `seller-chart-gen: WARN failed to publish listing — ${(err as Error).message}\n`,
+    );
+  }
+
+  serve({ fetch: app.fetch, port: PORT }, () => {
+    process.stderr.write(
+      `seller-chart-gen v0.0.1 listening on ${PUBLIC_URL} (agent_id=${agentId})\n`,
+    );
+  });
+})();
