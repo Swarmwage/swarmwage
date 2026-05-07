@@ -1,0 +1,30 @@
+{
+  "name": "@swarmwage/example-seller-data-extract",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Reference Swarmwage seller agent — fulfills data.extract.from-url via cheerio + Claude Haiku structured output",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.0",
+    "@hono/node-server": "^1.14.0",
+    "@swarmwage/agent-sdk": "workspace:*",
+    "cheerio": "^1.0.0",
+    "hono": "^4.6.0",
+    "viem": "^2.30.0",
+    "x402-hono": "^1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
