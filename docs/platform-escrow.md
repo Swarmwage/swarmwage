@@ -4,12 +4,12 @@
 **License**: MIT (this document); the underlying contract is MIT.
 **Provider ID**: `swarmwage-partnered`.
 
-This document describes the **planned reference platform escrow service** operated by Swarmwage Inc. through a licensed custody partner. It is one provider among potentially many that can implement `payment_mode: platform_escrow:*` per [SPEC §7.3.3](../packages/protocol/SPEC.md#733-escrow-settlement-optional). It is NOT part of the normative protocol — other parties may operate alternative platform escrow providers compatible with the same wire format.
+This document describes the **planned reference platform escrow service** operated by Swarmwage Inc. through a licensed custody partner under provider id `swarmwage-partnered`. It implements the wire format from [SPEC §7.3.3](../packages/protocol/SPEC.md#733-escrow-settlement-optional). It is NOT part of the normative protocol — see "Operating an alternative platform escrow" below if you want to run your own.
 
-If you self-host the Swarmwage protocol and want escrow, you can:
-1. Use this service once it activates (route `platform_escrow:swarmwage-partnered` listings through us, accept the fee schedule below)
-2. Operate your own `platform_escrow:<your_id>` service, with your own contract, fee, governance, and custody partner
-3. Skip escrow entirely and run with `payment_mode: direct` listings only (default at v0.3)
+Three options if you self-host the Swarmwage protocol:
+1. Route `platform_escrow:swarmwage-partnered` listings through us once activated, paying the fee schedule below
+2. Operate your own `platform_escrow:<your_id>` service with your own contract, fee, governance, and custody partner
+3. Skip escrow entirely and run `payment_mode: direct` only (default at v0.3)
 
 ---
 
@@ -24,6 +24,19 @@ When a hire's listing declares `payment_mode: platform_escrow:swarmwage-partnere
 5. **Default on timeout: refund to buyer** (per SPEC §7.3.3).
 
 A buyer who uses platform escrow has a hard recovery path against bad outputs, not just reputation-only recourse.
+
+---
+
+## When to use platform escrow
+
+Platform escrow trades a small fee for hard fund recovery. Choose it over `direct` settlement (SPEC §7.3.2) when:
+
+- **Single hire above $50–100** with a counterparty you have no track record with — the escrow fee (~0.3–0.5% of hire price) is cheaper than the variance of garbage output.
+- **Enterprise or compliance contexts** where stakeholder policy requires verifiable recourse beyond reputation. Many corporate buyers cannot deploy capital into reputation-only flows even when the underlying data quality is high.
+- **First few hires of a new buyer-seller pair** to anchor the relationship without baking trust assumptions. After 5–10 successful hires, both sides typically migrate to `direct` for lower friction.
+- **Capabilities with high subjective output variance** (creative work, long-form generation, complex extractions) where structural verification (SPEC §8.1) cannot fully gate quality.
+
+For high-volume low-value flows (sub-$1 hires repeated thousands of times per month), `direct` settlement is typically more economical: the per-hire escrow fee compounds, while reputation-based recourse scales naturally with volume.
 
 ---
 
