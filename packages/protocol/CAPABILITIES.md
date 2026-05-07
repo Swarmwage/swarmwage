@@ -88,11 +88,40 @@ The sandbox MUST guarantee:
 |---|---|---|---|
 | `data.lookup.weather.{format}` | `{ location: string, date?: string }` | (format-specific) | valid in declared format; contains required fields |
 | `data.lookup.web-search` | `{ query: string, limit?: int }` | `{ results: [{ url: string, title: string, snippet: string }] }` | valid JSON; results array; URLs well-formed |
+| `data.extract.from-url` | `{ url: string, fields: string[], max_response_kb?: int }` | `{ url: string, extracted: object, confidence: number, extracted_at: string }` | all requested `fields` present in `extracted`; ISO 4217 currency code where applicable; valid `https://` for URL fields; `confidence` ∈ [0, 1]; `extracted_at` parses as ISO 8601 |
 | `data.scrape.{url}.json` | `{ url: string, schema?: object }` | `{ data: object }` | valid JSON; fields specified by schema present |
 | `data.lookup.stock-price` | `{ ticker: string }` | `{ ticker: string, price: number, currency: string, timestamp: int }` | valid JSON; price > 0; timestamp recent |
 | `data.lookup.crypto-price` | `{ symbol: string, vs?: string }` | `{ symbol: string, price: number, vs: string, timestamp: int }` | valid JSON; price > 0 |
 
 `{format}` ∈ `{geojson, json, summary-text}`.
+
+#### `data.extract.from-url` — structured extraction
+
+Given a public URL and a list of field names, the seller fetches the page and returns a typed JSON record. The whole point is **stable schema-bound output**, not "summarize the page".
+
+- **Input**:
+  - `url` — http(s) URL to fetch. Sellers SHOULD reject `file://`, `data:`, internal IPs, and `localhost`.
+  - `fields` — array of field names the buyer wants extracted. Common fields: `title`, `price_currency`, `price_amount`, `availability`, `brand`, `main_image_url`, `description_short`, `published_at`, `author`. Sellers are free to extract beyond the requested set; verification only checks the requested ones.
+  - `max_response_kb` — optional cap on the seller's HTML fetch (default 512KB, max 4096KB). Sellers MUST honor this cap and return a `415` if the source page exceeds it.
+- **Output**:
+  - `url` — echo of input
+  - `extracted` — object with the requested fields as keys
+  - `confidence` — seller's self-assessed confidence in the extraction, [0.0, 1.0]
+  - `extracted_at` — ISO 8601 timestamp
+- **Field-level conventions** (when present in `extracted`):
+  - `price_currency` — 3-letter ISO 4217 code (`USD`, `EUR`, `GBP`, etc.)
+  - `price_amount` — numeric, ≥ 0, no thousands separator
+  - `availability` — enum `{in_stock, out_of_stock, unknown}`
+  - `*_url` fields — syntactically valid `https://` URLs
+  - `description_short` — ≤ 280 chars
+  - `published_at`, `extracted_at` — ISO 8601
+- **Verification** programmatic checks:
+  - All requested fields present in `extracted` (sellers MAY return `null` for fields not found, but the key MUST exist)
+  - Type conformance per the field-level conventions above
+  - `confidence` in range; `extracted_at` parses
+- **Verification** subjective (rating-only): factual correctness, currency/amount split, coherent prose.
+
+Sellers SHOULD prefer JSON-LD (`<script type="application/ld+json">` with schema.org `Product`, `Article`, `Recipe`, `Event`) when the page provides it — these are the highest-confidence inputs. Fall back to OpenGraph + meta + heuristic DOM extraction.
 
 ### Chart
 
