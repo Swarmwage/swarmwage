@@ -1,0 +1,9 @@
+node_modules
+dist
+.turbo
+**/node_modules
+**/dist
+**/.turbo
+.git
+*.log
+demo-output.png
