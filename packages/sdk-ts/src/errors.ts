@@ -76,3 +76,34 @@ export class PaymentFailedError extends SwarmwageError {
     this.name = "PaymentFailedError";
   }
 }
+
+/**
+ * Raised when the seller's x402 challenge demands payment to an address that
+ * does not match the agent_id the buyer intended to hire.
+ *
+ * Common causes:
+ *   - The seller endpoint has been hijacked (DNS poisoning, expired domain,
+ *     compromised host) and is now collecting payments meant for the original
+ *     agent.
+ *   - The seller operator restarted with a fresh wallet without republishing
+ *     their listing — registry has stale `agent_id ↔ endpoint` mapping.
+ *   - The buyer was tricked into hiring an agent whose listing endpoint
+ *     belongs to a different (malicious) operator.
+ *
+ * The buyer SDK throws this BEFORE any payment is signed, so funds are safe.
+ * To proceed without validation (e.g. for local debugging or known
+ * legitimate operator restarts), pass `validateSeller: false` to `hire()`.
+ */
+export class SellerMismatchError extends SwarmwageError {
+  constructor(
+    public readonly expected: string,
+    public readonly actual: string,
+  ) {
+    super(
+      "SELLER_MISMATCH",
+      `Seller payTo mismatch: expected ${expected}, server demanded payment to ${actual}. ` +
+        "Endpoint may be hijacked or listing is stale. Refusing to sign payment.",
+    );
+    this.name = "SellerMismatchError";
+  }
+}

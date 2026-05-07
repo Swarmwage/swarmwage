@@ -2,7 +2,7 @@
 // Wraps viem for signing operations.
 // License: MIT
 
-import { privateKeyToAccount } from "viem/accounts";
+import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
 import type { AgentId, Hex } from "./types.js";
 
@@ -13,6 +13,8 @@ export interface WalletConfig {
 
 export interface AgentWallet {
   agentId: AgentId;
+  /** Underlying viem account — used to construct a WalletClient for x402. */
+  account: PrivateKeyAccount;
   signMessage: (message: string) => Promise<Hex>;
   signTypedPayload: (payload: object) => Promise<Hex>;
 }
@@ -28,6 +30,7 @@ export function createWallet({ privateKey }: WalletConfig): AgentWallet {
 
   return {
     agentId,
+    account,
     signMessage: async (message: string): Promise<Hex> => {
       return account.signMessage({ message });
     },

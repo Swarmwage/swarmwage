@@ -35,6 +35,59 @@ const builtinVerifiers: Record<string, Verifier> = {
     return result(checks);
   },
 
+  "code.execute.sandboxed": (input, output) => {
+    const requested =
+      typeof (input as { timeout_ms?: number }).timeout_ms === "number"
+        ? (input as { timeout_ms?: number }).timeout_ms!
+        : 5000;
+    // Allow a 25% grace window for cleanup + IPC.
+    const ceiling = Math.floor(requested * 1.25);
+    const dur = (output as { duration_ms?: number }).duration_ms;
+    const checks = [
+      check("output_has_stdout", typeof output.stdout === "string"),
+      check("output_has_stderr", typeof output.stderr === "string"),
+      check(
+        "exit_code_is_int",
+        typeof output.exit_code === "number" && Number.isInteger(output.exit_code),
+      ),
+      check(
+        "duration_within_timeout",
+        typeof dur === "number" && dur >= 0 && dur <= ceiling,
+      ),
+      check("truncated_is_bool", typeof output.truncated === "boolean"),
+    ];
+    return result(checks);
+  },
+
+  "chart.generate.from-data": (input, output) => {
+    const inData = (input as { data?: unknown[] }).data;
+    const inType = (input as { chart_type?: string }).chart_type;
+    const checks = [
+      check(
+        "input_data_nonempty",
+        Array.isArray(inData) && inData.length > 0,
+      ),
+      check("output_has_image_b64", typeof output.image_b64 === "string"),
+      check("image_b64_nonempty", isNonEmptyString(output.image_b64)),
+      check(
+        "dimensions_match",
+        typeof output.width === "number" &&
+          typeof output.height === "number" &&
+          output.width === input.width &&
+          output.height === input.height,
+      ),
+      check(
+        "chart_type_match",
+        typeof output.chart_type === "string" && output.chart_type === inType,
+      ),
+      check(
+        "valid_png_magic",
+        typeof output.image_b64 === "string" && isValidPng(output.image_b64),
+      ),
+    ];
+    return result(checks);
+  },
+
   "audio.transcribe.it.json-with-timestamps": (_input, output) => {
     const segs = output.segments;
     const checks = [
@@ -149,4 +202,8 @@ function isValidImageMagic(b64: string): boolean {
   // GIF
   if (prefix.startsWith("GIF87a") || prefix.startsWith("GIF89a")) return true;
   return false;
+}
+
+function isValidPng(b64: string): boolean {
+  return decodeBase64Prefix(b64).startsWith("\x89PNG");
 }

@@ -1,8 +1,10 @@
 // Swarmwage Agent SDK — HTTP transport
-// Thin wrapper around fetch with x402 payment retry semantics.
+// Thin wrapper around fetch. The x402 dance (402 challenge → signed
+// authorization → retry → settle) is delegated to `x402-fetch`'s
+// `wrapFetchWithPayment`, which the AgentClient injects as `paidFetch`.
 // License: MIT
 
-import { TransportError, PaymentFailedError } from "./errors.js";
+import { SwarmwageError, TransportError } from "./errors.js";
 import { PROTOCOL_VERSION, type Hex } from "./types.js";
 
 export interface TransportOptions {
@@ -11,21 +13,12 @@ export interface TransportOptions {
   headers?: Record<string, string>;
   /** Request timeout in ms. */
   timeoutMs?: number;
-}
-
-export interface PaymentSigner {
   /**
-   * Sign and produce an x402 payment authorization given the challenge headers.
-   * Returns the value to put in the `X-PAYMENT` header on retry.
+   * fetch implementation that handles the x402 payment dance automatically
+   * (typically `wrapFetchWithPayment(fetch, walletClient)` from `x402-fetch`).
+   * Used only when the caller passes `paid: true`.
    */
-  signPayment: (challenge: X402Challenge) => Promise<string>;
-}
-
-export interface X402Challenge {
-  network: string;
-  address: string;
-  amount: string;
-  capability_hash?: string;
+  paidFetch?: typeof fetch;
 }
 
 export class Transport {
@@ -33,7 +26,22 @@ export class Transport {
 
   async json<T>(
     path: string,
-    init?: RequestInit & { paymentSigner?: PaymentSigner },
+    init?: RequestInit & {
+      paid?: boolean;
+      /**
+       * Per-call override for the paid fetcher. When `paid: true`, this takes
+       * precedence over the constructor's default `paidFetch`. Used by
+       * `AgentClient.hire` to inject a per-hire `wrapFetchWithPayment` whose
+       * `paymentRequirementsSelector` validates the seller's `payTo`.
+       */
+      paidFetch?: typeof fetch;
+      /**
+       * Called with the raw Response before the body is decoded. Use to read
+       * response headers (e.g. `X-PAYMENT-RESPONSE` for x402 settlement info).
+       * MUST NOT consume the body.
+       */
+      onResponse?: (res: Response) => void;
+    },
   ): Promise<T> {
     const url = path.startsWith("http")
       ? path
@@ -47,40 +55,19 @@ export class Transport {
       if (!headers.has(k)) headers.set(k, v);
     }
 
-    const res = await fetchWithTimeout(url, { ...init, headers }, this.opts.timeoutMs);
+    const fetcher = init?.paid
+      ? init?.paidFetch ?? this.opts.paidFetch ?? globalThis.fetch
+      : globalThis.fetch;
 
-    // x402 payment dance — only run if a signer is provided
-    if (res.status === 402 && init?.paymentSigner) {
-      const challenge = parseX402Challenge(res);
-      const auth = await init.paymentSigner.signPayment(challenge);
-      const retryHeaders = new Headers(headers);
-      retryHeaders.set("X-PAYMENT", auth);
-
-      const retry = await fetchWithTimeout(
-        url,
-        { ...init, headers: retryHeaders },
-        this.opts.timeoutMs,
-      );
-      return decode<T>(retry);
-    }
-
+    const res = await fetchWithTimeout(
+      url,
+      { ...init, headers },
+      this.opts.timeoutMs,
+      fetcher,
+    );
+    init?.onResponse?.(res);
     return decode<T>(res);
   }
-}
-
-function parseX402Challenge(res: Response): X402Challenge {
-  const network = res.headers.get("X-402-Network");
-  const address = res.headers.get("X-402-Address");
-  const amount = res.headers.get("X-402-Amount");
-  if (!network || !address || !amount) {
-    throw new PaymentFailedError("Malformed x402 challenge headers");
-  }
-  return {
-    network,
-    address,
-    amount,
-    capability_hash: res.headers.get("X-402-Capability-Hash") ?? undefined,
-  };
 }
 
 async function decode<T>(res: Response): Promise<T> {
@@ -98,12 +85,17 @@ async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs = 30_000,
+  fetcher: typeof fetch = globalThis.fetch,
 ): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ctrl.signal });
+    return await fetcher(url, { ...init, signal: ctrl.signal });
   } catch (err) {
+    // Let SwarmwageError subclasses (e.g. SellerMismatchError thrown by the
+    // x402 selector) propagate unwrapped — they carry intent the caller
+    // needs to distinguish from a generic network error.
+    if (err instanceof SwarmwageError) throw err;
     if ((err as Error).name === "AbortError") {
       throw new TransportError(`Request to ${url} timed out after ${timeoutMs}ms`);
     }

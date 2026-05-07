@@ -122,6 +122,16 @@ export interface HireRequest {
   callback_url?: string;
   /** Optional idempotency key. SDK generates one if omitted. */
   nonce?: string;
+  /**
+   * Validate that the seller's x402 challenge demands payment to the address
+   * matching the resolved `agent_id`. Defaults to `true`. Set `false` ONLY
+   * for trusted local testing or when you knowingly accept paying a
+   * different address than the listing claims (e.g. an operator restart).
+   *
+   * When `true` and the buyer cannot determine an `agent_id` (because
+   * `endpoint` was provided without one), `hire()` throws before sending.
+   */
+  validateSeller?: boolean;
 }
 
 export interface VerificationCheck {

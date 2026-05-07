@@ -26,6 +26,8 @@
   },
   "dependencies": {
     "viem": "^2.30.0",
+    "x402": "^1.2.0",
+    "x402-fetch": "^1.2.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

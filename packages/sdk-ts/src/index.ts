@@ -50,4 +50,5 @@ export {
   HireRefusedError,
   InvalidProtocolVersionError,
   PaymentFailedError,
+  SellerMismatchError,
 } from "./errors.js";

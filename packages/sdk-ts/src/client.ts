@@ -1,7 +1,14 @@
 // Swarmwage Agent SDK — main AgentClient
 // License: MIT
 
-import { Transport, type PaymentSigner, type X402Challenge } from "./transport.js";
+import { createWalletClient, http } from "viem";
+import { base, baseSepolia } from "viem/chains";
+import { wrapFetchWithPayment } from "x402-fetch";
+import {
+  selectPaymentRequirements,
+  type PaymentRequirementsSelector,
+} from "x402/client";
+import { Transport } from "./transport.js";
 import { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
 import {
   createBudgetState,
@@ -15,6 +22,7 @@ import { verify } from "./verification.js";
 import {
   HireRefusedError,
   InvalidProtocolVersionError,
+  SellerMismatchError,
   VerificationFailedError,
 } from "./errors.js";
 import {
@@ -36,6 +44,8 @@ import {
   type UsdcAmount,
 } from "./types.js";
 
+export type SwarmwageNetwork = "base" | "base-sepolia";
+
 export interface AgentClientOptions extends WalletConfig {
   /** Override the canonical registry URL. */
   registryUrl?: string;
@@ -43,20 +53,43 @@ export interface AgentClientOptions extends WalletConfig {
   budget?: BudgetToken;
   /** Force telemetry on/off. Defaults to env var `AGENT_TELEMETRY`. */
   telemetry?: boolean;
+  /** Chain to use for x402 payments. Defaults to `base-sepolia`. */
+  network?: SwarmwageNetwork;
+  /** Override the JSON-RPC URL. Defaults to viem's public RPC for the network. */
+  rpcUrl?: string;
 }
 
 export class AgentClient {
   readonly wallet: AgentWallet;
   readonly registryUrl: string;
+  readonly network: SwarmwageNetwork;
   private budgetState: BudgetState | null;
   private readonly transport: Transport;
   private readonly telemetry: ReturnType<typeof createTelemetry>;
+  private readonly walletClient: ReturnType<typeof createWalletClient>;
 
   constructor(opts: AgentClientOptions) {
     this.wallet = createWallet({ privateKey: opts.privateKey });
     this.registryUrl = opts.registryUrl ?? "https://api.swarmwage.com";
+    this.network = opts.network ?? "base-sepolia";
+
+    const chain = this.network === "base" ? base : baseSepolia;
+    this.walletClient = createWalletClient({
+      account: this.wallet.account,
+      transport: http(opts.rpcUrl),
+      chain,
+    });
+
+    // viem's `WalletClient` types `account` as `Account | undefined` even when
+    // we know it's a defined PrivateKeyAccount; x402-fetch's SignerWallet type
+    // requires the narrower form. We cast at the boundary.
+    const paidFetch = wrapFetchWithPayment(
+      globalThis.fetch,
+      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
+    ) as unknown as typeof fetch;
+
     this.budgetState = opts.budget ? createBudgetState(opts.budget) : null;
-    this.transport = new Transport({ baseUrl: this.registryUrl });
+    this.transport = new Transport({ baseUrl: this.registryUrl, paidFetch });
     this.telemetry = createTelemetry({
       enabled: opts.telemetry,
       agentId: this.wallet.agentId,
@@ -139,6 +172,25 @@ export class AgentClient {
       endpoint = top.listing.endpoint;
     }
 
+    // Anti-hijack: validate that the seller's x402 challenge demands payment
+    // to the resolved sellerId. Refuse to sign if the endpoint is serving a
+    // different agent than the listing claims.
+    const validateSeller = req.validateSeller !== false;
+    if (validateSeller && !sellerId) {
+      throw new SellerMismatchError(
+        "(unknown — agent_id required when endpoint is set and validateSeller is true)",
+        "(any)",
+      );
+    }
+    const paidFetchForHire = validateSeller && sellerId
+      ? (wrapFetchWithPayment(
+          globalThis.fetch,
+          this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
+          undefined,
+          makeAntiHijackSelector(sellerId, this.network),
+        ) as unknown as typeof fetch)
+      : undefined;
+
     const nonce = req.nonce ?? crypto.randomUUID();
     const body = {
       protocol: PROTOCOL_VERSION,
@@ -160,11 +212,16 @@ export class AgentClient {
 
     const t0 = Date.now();
     let response: HireResponse;
+    let txHashFromHeader: string | undefined;
     try {
       response = await this.transport.json<HireResponse>(`${endpoint}/hire`, {
         method: "POST",
         body: JSON.stringify(body),
-        paymentSigner: this.makePaymentSigner(),
+        paid: true,
+        paidFetch: paidFetchForHire,
+        onResponse: (res) => {
+          txHashFromHeader = decodeX402SettlementTxHash(res);
+        },
       });
     } catch (err) {
       this.telemetry.send({
@@ -177,6 +234,18 @@ export class AgentClient {
 
     if (response.protocol !== PROTOCOL_VERSION) {
       throw new InvalidProtocolVersionError(response.protocol, PROTOCOL_VERSION);
+    }
+
+    // x402-hono sets X-PAYMENT-RESPONSE on the response after the seller
+    // handler has already serialized its body, so the receipt body's
+    // `tx_hash` arrives as zeroed-out. Recover the real settlement hash
+    // from the header and patch the receipt before returning.
+    if (
+      txHashFromHeader &&
+      response.receipt &&
+      isZeroHash(response.receipt.tx_hash)
+    ) {
+      response.receipt.tx_hash = txHashFromHeader as typeof response.receipt.tx_hash;
     }
 
     // Run client-side verification
@@ -234,7 +303,7 @@ export class AgentClient {
         callback_url: req.callback_url,
         nonce: req.nonce ?? crypto.randomUUID(),
       }),
-      paymentSigner: this.makePaymentSigner(),
+      paid: true,
     });
   }
 
@@ -281,29 +350,55 @@ export class AgentClient {
     });
     return signed;
   }
+}
 
-  // -----------------------------------------------------------------------
-  // Internal
-  // -----------------------------------------------------------------------
+const ZERO_HASH =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-  private makePaymentSigner(): PaymentSigner {
-    return {
-      signPayment: async (challenge: X402Challenge) => {
-        // v0.0.1: produce a signed authorization message; the actual on-chain
-        // payment broadcast is handled by the seller's escrow contract on settlement.
-        // Full x402 flow integration lands in v0.0.2.
-        const message = JSON.stringify({
-          x402: "v1",
-          network: challenge.network,
-          to: challenge.address,
-          amount: challenge.amount,
-          capability_hash: challenge.capability_hash,
-          buyer: this.agentId,
-          ts: Date.now(),
-        });
-        const signature = await this.wallet.signMessage(message);
-        return `${signature}.${btoa(message)}`;
-      },
-    };
+function isZeroHash(h: string | undefined | null): boolean {
+  return !h || h === ZERO_HASH || h === "0x" || h === "";
+}
+
+/**
+ * Build an x402 PaymentRequirementsSelector that accepts a payment requirement
+ * only if its `payTo` matches the buyer's expected sellerId. Used by
+ * `AgentClient.hire` to guard against endpoint hijacks and stale listings.
+ *
+ * Throws `SellerMismatchError` BEFORE any signature is created, so funds
+ * remain safe.
+ */
+function makeAntiHijackSelector(
+  expectedSellerId: AgentId,
+  network: SwarmwageNetwork,
+): PaymentRequirementsSelector {
+  const expected = expectedSellerId.toLowerCase();
+  return (paymentRequirements, _network, scheme) => {
+    // Force-narrow to our network. Otherwise an attacker could include a
+    // requirement on a different chain where the buyer happens to have funds.
+    const selected = selectPaymentRequirements(
+      paymentRequirements,
+      network,
+      scheme,
+    );
+    const actual = (selected.payTo ?? "").toLowerCase();
+    if (actual !== expected) {
+      throw new SellerMismatchError(expected, actual || "(missing)");
+    }
+    return selected;
+  };
+}
+
+function decodeX402SettlementTxHash(res: Response): string | undefined {
+  const xpr = res.headers.get("X-PAYMENT-RESPONSE");
+  if (!xpr) return undefined;
+  try {
+    const decoded = JSON.parse(
+      typeof atob === "function"
+        ? atob(xpr)
+        : Buffer.from(xpr, "base64").toString("utf8"),
+    ) as { transaction?: string; txHash?: string };
+    return decoded.transaction ?? decoded.txHash ?? undefined;
+  } catch {
+    return undefined;
   }
 }
