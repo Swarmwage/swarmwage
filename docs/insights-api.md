@@ -110,12 +110,12 @@ This is the v0.3 default. The privacy model is documented in [SPEC §9.2](../pac
 
 | Tier | Price | Limits |
 |---|---|---|
-| **Free** | €0 | 1,000 calls / month per API key; 60 calls/min rate limit; live data only |
-| **Pro** | €99 / month | Unlimited calls; 600 calls/min rate limit; 30-day historical depth |
-| **Pro+** | €299 / month | Unlimited calls; 6,000 calls/min rate limit; 90-day historical depth; webhook subscriptions |
-| **Per-call** | €0.001 / call | For workloads with sporadic high spikes; billed end-of-month |
+| **Free** | $0 | 1,000 calls / month per API key; 60 calls/min rate limit; live data only |
+| **Pro** | $99 / month | Unlimited calls; 600 calls/min rate limit; 30-day historical depth |
+| **Pro+** | $299 / month | Unlimited calls; 6,000 calls/min rate limit; 90-day historical depth; webhook subscriptions |
+| **Per-call** | $0.001 / call | For workloads with sporadic high spikes; billed end-of-month |
 
-All prices in EUR; USD billing available at FX-of-the-day. Annual prepay (12 months) gets 2 months free on Pro and Pro+. Enterprise contracts (custom rate limits, white-label, SLA) are negotiated separately — contact `sales@swarmwage.com`.
+All prices in USD; EUR and GBP billing available at FX-of-the-day. Annual prepay (12 months) gets 2 months free on Pro and Pro+. Enterprise contracts (custom rate limits, white-label, SLA) are negotiated separately — contact `sales@swarmwage.com`.
 
 ---
 
