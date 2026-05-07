@@ -15,6 +15,7 @@
 //   image.generate.photorealistic.png  (default) — pairs with seller-image-gen
 //   chart.generate.from-data                     — pairs with seller-chart-gen
 //   code.execute.sandboxed                       — pairs with seller-code-exec
+//   data.extract.from-url                        — pairs with seller-data-extract
 
 import { writeFile } from "node:fs/promises";
 import { generatePrivateKey } from "viem/accounts";
@@ -173,6 +174,47 @@ print("pi (8 digits):", round(math.pi, 8))
   };
 }
 
+function dataExtractScenario(): Scenario {
+  const DEFAULT_URL =
+    "http://localhost:4004/sample/product-001.html";
+  const url = process.env.EXTRACT_URL ?? DEFAULT_URL;
+  const fields = process.env.EXTRACT_FIELDS
+    ? (JSON.parse(process.env.EXTRACT_FIELDS) as string[])
+    : [
+        "title",
+        "price_currency",
+        "price_amount",
+        "availability",
+        "brand",
+        "main_image_url",
+        "description_short",
+      ];
+  const maxKb = Number(process.env.EXTRACT_MAX_KB ?? 512);
+
+  return {
+    capability: "data.extract.from-url",
+    maxPriceUsdc: "1.00",
+    maxLatencyMs: 30_000,
+    params: {
+      url,
+      fields,
+      max_response_kb: maxKb,
+    },
+    async saveResult(result) {
+      const r = result as {
+        url: string;
+        extracted: Record<string, unknown>;
+        confidence: number;
+        extracted_at: string;
+      };
+      process.stdout.write("\n--- extracted ---\n");
+      process.stdout.write(JSON.stringify(r.extracted, null, 2));
+      process.stdout.write("\n");
+      return `confidence=${r.confidence.toFixed(2)}  fields=${Object.keys(r.extracted).length}  url=${r.url}`;
+    },
+  };
+}
+
 function pickScenario(capability: string): Scenario {
   switch (capability) {
     case "image.generate.photorealistic.png":
@@ -181,9 +223,11 @@ function pickScenario(capability: string): Scenario {
       return chartScenario();
     case "code.execute.sandboxed":
       return codeExecScenario();
+    case "data.extract.from-url":
+      return dataExtractScenario();
     default:
       throw new Error(
-        `Unknown CAPABILITY: ${capability}. Supported: image.generate.photorealistic.png, chart.generate.from-data, code.execute.sandboxed`,
+        `Unknown CAPABILITY: ${capability}. Supported: image.generate.photorealistic.png, chart.generate.from-data, code.execute.sandboxed, data.extract.from-url`,
       );
   }
 }

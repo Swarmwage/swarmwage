@@ -69,6 +69,9 @@ CAPABILITY=image.generate.photorealistic.png pnpm --filter @swarmwage/example-de
 
 # pair with seller-chart-gen
 CAPABILITY=chart.generate.from-data pnpm --filter @swarmwage/example-demo-buyer start
+
+# pair with seller-data-extract (defaults to the seller's own /sample/product-001.html)
+CAPABILITY=data.extract.from-url pnpm --filter @swarmwage/example-demo-buyer start
 ```
 
 ## Environment variables
@@ -78,7 +81,7 @@ CAPABILITY=chart.generate.from-data pnpm --filter @swarmwage/example-demo-buyer 
 | `BUYER_PRIVATE_KEY` | required | 0x-prefixed 32-byte hex. Wallet must hold USDC on the configured network. |
 | `NETWORK` | `base-sepolia` | `base-sepolia` for testnet, `base` for mainnet |
 | `REGISTRY_URL` | `http://localhost:3000` | Override registry endpoint |
-| `CAPABILITY` | `image.generate.photorealistic.png` | Which capability to hire. Supported: `image.generate.photorealistic.png`, `chart.generate.from-data`, `code.execute.sandboxed` |
+| `CAPABILITY` | `image.generate.photorealistic.png` | Which capability to hire. Supported: `image.generate.photorealistic.png`, `chart.generate.from-data`, `code.execute.sandboxed`, `data.extract.from-url` |
 | **image** | | |
 | `PROMPT` | `"a friendly robot painting a sunset, photorealistic"` | Image prompt |
 | `WIDTH` | `768` | Output width |
@@ -96,6 +99,10 @@ CAPABILITY=chart.generate.from-data pnpm --filter @swarmwage/example-demo-buyer 
 | `CODE` | sample fibonacci script | Python source to execute |
 | `STDIN` | _(unset)_ | Optional stdin fed to `input()`/`sys.stdin` |
 | `TIMEOUT_MS` | `5000` | Wall-clock timeout (max 30000) |
+| **data-extract** | | |
+| `EXTRACT_URL` | `http://localhost:4004/sample/product-001.html` | URL to extract from. The default targets the seller's bundled sample so the demo runs without `samples.swarmwage.com`. |
+| `EXTRACT_FIELDS` | `["title","price_currency","price_amount","availability","brand","main_image_url","description_short"]` | JSON array of field names to extract |
+| `EXTRACT_MAX_KB` | `512` | Max HTML response size the seller will fetch (hard ceiling 4096) |
 
 ## Troubleshooting
 
