@@ -2,6 +2,11 @@
 node_modules/
 .pnpm-store/
 
+# Python virtualenvs (used by seller sidecars like chart-gen)
+.venv/
+__pycache__/
+*.pyc
+
 # Build outputs
 dist/
 build/
