@@ -46,6 +46,9 @@ Thumbs.db
 # Demo output artifacts
 demo-output.*
 
+# Imported brand mockup (kept locally for reference, not source of truth)
+Swarmwage.zip
+
 # Internal strategy docs (do NOT publish — contains viral tactics, pricing, moat strategy)
 PLAN.md
 CLAUDE.md
