@@ -15,6 +15,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { keccak256, toBytes } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { paymentMiddleware, type Network } from "x402-hono";
 import {
   PROTOCOL_VERSION,
   type AgentId,
@@ -34,6 +35,9 @@ const PORT = Number(process.env.PORT ?? 4001);
 const REGISTRY_URL = process.env.REGISTRY_URL ?? "http://localhost:3000";
 const PUBLIC_URL = process.env.PUBLIC_URL ?? `http://localhost:${PORT}`;
 const PRICE_USDC = process.env.PRICE_USDC ?? "0.10";
+const NETWORK = (process.env.NETWORK ?? "base-sepolia") as Network;
+const FACILITATOR_URL = (process.env.FACILITATOR_URL ??
+  "https://x402.org/facilitator") as `${string}://${string}`;
 
 const account = privateKeyToAccount(PRIVATE_KEY);
 const agentId = account.address.toLowerCase() as AgentId;
@@ -127,7 +131,28 @@ app.get("/", (c) =>
     agent_id: agentId,
     protocol: PROTOCOL_VERSION,
     backend: "pollinations.ai (flux)",
+    network: NETWORK,
+    price_usdc: PRICE_USDC,
   }),
+);
+
+// x402 payment middleware: protects POST /hire.
+// Buyer's first call returns 402 with PaymentRequirements; buyer signs an
+// EIP-3009 transferWithAuthorization on USDC, retries with X-PAYMENT header,
+// the middleware verifies + settles via the configured facilitator, then
+// hands control to the handler below. Settlement tx hash is exposed via
+// the X-PAYMENT-RESPONSE header that the middleware sets on the response.
+app.use(
+  paymentMiddleware(
+    account.address,
+    {
+      "POST /hire": {
+        price: `$${PRICE_USDC}`,
+        network: NETWORK,
+      },
+    },
+    { url: FACILITATOR_URL },
+  ),
 );
 
 app.post("/hire", async (c) => {
@@ -157,9 +182,6 @@ app.post("/hire", async (c) => {
     return c.json({ error: "Missing params.prompt" }, 400);
   }
 
-  // For v0.0.1 demo: skip x402 challenge dance, accept the hire and execute.
-  // Production: respond 402 with x402 challenge headers, await signed payment.
-
   let result: ImageGenOutput;
   try {
     result = await generateImage(body.params);
@@ -172,6 +194,24 @@ app.post("/hire", async (c) => {
   const receiptId = `rcpt_${crypto.randomUUID()}`;
   const ratingToken = `rtt_${crypto.randomUUID()}`;
 
+  // The x402 facilitator settles before this handler runs. The response
+  // X-PAYMENT-RESPONSE header (set by paymentMiddleware) contains the tx
+  // hash; the buyer SDK can decode it. We surface it in the receipt body
+  // too for convenience.
+  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
+  let txHash =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  if (paymentResponseHeader) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
+      ) as { transaction?: string; txHash?: string };
+      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
+    } catch {
+      // header malformed — keep placeholder; the header is still authoritative
+    }
+  }
+
   return c.json({
     protocol: PROTOCOL_VERSION,
     receipt: {
@@ -179,9 +219,8 @@ app.post("/hire", async (c) => {
       buyer_id: body.buyer_id ?? "0x0000000000000000000000000000000000000000",
       seller_id: agentId,
       capability: body.capability,
-      tx_hash:
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-      price_paid_usdc: body.params ? "0.00" : PRICE_USDC, // first_call_free demo
+      tx_hash: txHash,
+      price_paid_usdc: PRICE_USDC,
       completed_at: completedAt,
     },
     result,
