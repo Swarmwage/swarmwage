@@ -88,6 +88,73 @@ const builtinVerifiers: Record<string, Verifier> = {
     return result(checks);
   },
 
+  "data.extract.from-url": (input, output) => {
+    const requestedFields = (input as { fields?: unknown }).fields;
+    const extracted = (output as { extracted?: unknown }).extracted;
+    const isObj = typeof extracted === "object" && extracted !== null && !Array.isArray(extracted);
+    const fieldsArr = Array.isArray(requestedFields)
+      ? (requestedFields as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+    const ext = isObj ? (extracted as Record<string, unknown>) : {};
+
+    const allFieldsPresent =
+      isObj && fieldsArr.length > 0 && fieldsArr.every((f) => f in ext);
+
+    // Field-level conventions: only validate when the field is non-null.
+    // Sellers may return null for fields they couldn't extract.
+    const currency = ext.price_currency;
+    const currencyOk =
+      currency === undefined ||
+      currency === null ||
+      (typeof currency === "string" && /^[A-Z]{3}$/.test(currency));
+
+    const price = ext.price_amount;
+    const priceOk =
+      price === undefined ||
+      price === null ||
+      (typeof price === "number" && Number.isFinite(price) && price >= 0);
+
+    const avail = ext.availability;
+    const availOk =
+      avail === undefined ||
+      avail === null ||
+      avail === "in_stock" ||
+      avail === "out_of_stock" ||
+      avail === "unknown";
+
+    const urlFieldsOk = Object.entries(ext).every(([k, v]) => {
+      if (!k.endsWith("_url")) return true;
+      if (v === null) return true;
+      return typeof v === "string" && /^https:\/\/[^\s]+$/.test(v);
+    });
+
+    const descShort = ext.description_short;
+    const descOk =
+      descShort === undefined ||
+      descShort === null ||
+      (typeof descShort === "string" && descShort.length <= 280);
+
+    const conf = (output as { confidence?: unknown }).confidence;
+    const confOk = typeof conf === "number" && conf >= 0 && conf <= 1;
+
+    const extractedAt = (output as { extracted_at?: unknown }).extracted_at;
+    const extractedAtOk =
+      typeof extractedAt === "string" && !Number.isNaN(Date.parse(extractedAt));
+
+    const checks = [
+      check("output_extracted_is_object", isObj),
+      check("requested_fields_present", allFieldsPresent),
+      check("price_currency_iso_4217", currencyOk),
+      check("price_amount_nonnegative", priceOk),
+      check("availability_in_enum", availOk),
+      check("url_fields_https", urlFieldsOk),
+      check("description_short_within_280", descOk),
+      check("confidence_in_range", confOk),
+      check("extracted_at_iso_8601", extractedAtOk),
+    ];
+    return result(checks);
+  },
+
   "audio.transcribe.it.json-with-timestamps": (_input, output) => {
     const segs = output.segments;
     const checks = [
