@@ -13,7 +13,7 @@ This document defines the standard capability namespace for `swarmwage/v0.1`. Ea
 <domain>.<action>[.<modifier>]*[.<format>]
 ```
 
-- `domain` — top-level category (`image`, `audio`, `text`, `code`, `data`, `compute`, `embed`, `classify`)
+- `domain` — top-level category (`image`, `audio`, `text`, `code`, `data`, `chart`, `compute`, `exec`, `embed`, `classify`)
 - `action` — what the capability does (`generate`, `edit`, `transcribe`, `translate`, etc.)
 - `modifier` — qualifiers (style, language, model, etc.)
 - `format` — output format where relevant (`png`, `mp3`, `json`, etc.)
@@ -69,8 +69,18 @@ All identifiers are lowercase, dot-separated, no spaces.
 | `code.review.{language}` | `{ code: string }` | `{ findings: [{ severity: enum, line: int, message: string }] }` | valid JSON; findings array (can be empty) |
 | `code.test.{language}` | `{ code: string, test_framework: string }` | `{ tests: string }` | parses; references symbols from input code |
 | `code.translate.{src}.{tgt}` | `{ code: string }` | `{ code: string }` | parses as `tgt` language |
+| `code.execute.sandboxed` | `{ code: string, language?: enum, stdin?: string, timeout_ms?: int }` | `{ stdout: string, stderr: string, exit_code: int, duration_ms: int, truncated: bool }` | stdout/stderr are strings; `exit_code` is int; `duration_ms` ≤ effective timeout (with grace); not malformed |
 
-`{language}` ∈ `{python, javascript, typescript, go, rust, java, ruby, php, csharp, swift, kotlin}`.
+`{language}` ∈ `{python, javascript, typescript, go, rust, java, ruby, php, csharp, swift, kotlin}` for code generation/translation.
+
+For `code.execute.sandboxed` the `language` parameter is `python` only in v0.1 (Pyodide WASM). v0.2 will add `{javascript, bash}`. Sellers MUST advertise the runtime via the `/capabilities/code.execute.sandboxed/runtime` endpoint and reject mismatches with HTTP 400.
+
+The sandbox MUST guarantee:
+- no host filesystem access by default
+- no outbound network by default
+- bounded stdout/stderr capture (sellers truncate beyond their per-listing cap and set `truncated: true`)
+- enforced wall-clock timeout (`timeout_ms`, default 5000, max 30000 in v0.1)
+- deterministic exit_code: `0` on clean Python termination, `1` on uncaught exception, `124` on timeout
 
 ### Data
 
@@ -83,6 +93,18 @@ All identifiers are lowercase, dot-separated, no spaces.
 | `data.lookup.crypto-price` | `{ symbol: string, vs?: string }` | `{ symbol: string, price: number, vs: string, timestamp: int }` | valid JSON; price > 0 |
 
 `{format}` ∈ `{geojson, json, summary-text}`.
+
+### Chart
+
+Server-side rendered charts from a structured dataset. The seller receives data points and a chart type, returns a rasterized image. The output is deterministic for `(data, chart_type, dimensions, seed?)`.
+
+| Capability | Input | Output | Verification |
+|---|---|---|---|
+| `chart.generate.from-data` | `{ title?: string, data: [{ x: string\|number, y: number }], chart_type: enum, width: int, height: int, x_label?: string, y_label?: string, theme?: enum }` | `{ image_b64: string, width: int, height: int, chart_type: string }` | valid PNG; dimensions match input; data series non-empty; image not all-blank |
+
+`chart_type` ∈ `{bar, line, pie}` in v0.1. Sellers MAY support more, advertised via `custom.<provider>.chart.*` capabilities.
+
+`theme` ∈ `{light, dark}`. Optional; default is seller-defined.
 
 ### Compute
 
