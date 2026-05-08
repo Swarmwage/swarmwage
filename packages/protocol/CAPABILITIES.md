@@ -39,7 +39,7 @@ All identifiers are lowercase, dot-separated, no spaces.
 
 | Capability | Input | Output | Verification |
 |---|---|---|---|
-| `audio.transcribe.{lang}.json-with-timestamps` | `{ audio_url: string }` | `{ segments: [{ start_ms: int, end_ms: int, text: string }] }` | valid JSON; segments non-empty; timestamps monotonic; language detected = `lang` |
+| `audio.transcribe.json-with-timestamps` | `{ audio_url: string, language_hint?: string }` | `{ language: string, segments: [{ start_ms: int, end_ms: int, text: string }] }` | valid JSON; `language` is ISO 639-1 lowercase non-empty string (auto-detected unless `language_hint` forces it); segments non-empty; timestamps monotonic (`start_ms_n ≥ end_ms_{n-1}` OR `start_ms_n ≥ start_ms_{n-1}`) |
 | `audio.transcribe.{lang}.text` | `{ audio_url: string }` | `{ text: string }` | non-empty; language detected = `lang` |
 | `audio.generate-speech.{voice}.mp3` | `{ text: string }` | `{ audio_b64: string, duration_ms: int }` | valid MP3; duration > 0 |
 | `audio.translate.{src}.{tgt}` | `{ audio_url: string }` | `{ text: string }` | non-empty; language detected = `tgt` |

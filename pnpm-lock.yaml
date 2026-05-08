@@ -37,6 +37,37 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  examples/seller-audio-transcribe:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^1.14.0
+        version: 1.19.14(hono@4.12.16)
+      '@swarmwage/agent-sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk-ts
+      hono:
+        specifier: ^4.6.0
+        version: 4.12.16
+      viem:
+        specifier: ^2.30.0
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
+      x402-hono:
+        specifier: ^1.2.0
+        version: 1.2.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   examples/seller-chart-gen:
     dependencies:
       '@hono/node-server':

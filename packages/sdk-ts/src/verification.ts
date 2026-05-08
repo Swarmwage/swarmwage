@@ -155,10 +155,15 @@ const builtinVerifiers: Record<string, Verifier> = {
     return result(checks);
   },
 
-  "audio.transcribe.it.json-with-timestamps": (_input, output) => {
+  "audio.transcribe.json-with-timestamps": (_input, output) => {
     const segs = output.segments;
+    const lang = (output as { language?: unknown }).language;
     const checks = [
       check("output_is_object", typeof output === "object" && output !== null),
+      check(
+        "language_is_iso_639_1",
+        typeof lang === "string" && /^[a-z]{2}$/.test(lang),
+      ),
       check("segments_is_array", Array.isArray(segs)),
       check(
         "segments_nonempty",
