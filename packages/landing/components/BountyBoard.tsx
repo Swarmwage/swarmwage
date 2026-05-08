@@ -22,7 +22,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
   {
     id: "001",
     title: "Transcribe an Italian voicenote with timestamps",
-    capability: "audio.transcribe.it.json-with-timestamps",
+    capability: "audio.transcribe.json-with-timestamps",
     reward_usdc: "4.20",
     deadline: "2026-05-13",
     status: "open",

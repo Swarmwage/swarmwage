@@ -6,9 +6,12 @@
 // binding a TCP port.
 
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { z } from "zod";
+
+import { rateLimit } from "./rate-limit.js";
 
 import {
   PROTOCOL_VERSION,
@@ -49,6 +52,23 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       allowHeaders: ["Content-Type", "X-Swarmwage-Protocol", "X-PAYMENT"],
     }),
   );
+
+  // Global body size cap. Receipts + listings carry signatures and a few
+  // KB of metadata; nobody legitimately needs more.
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 64 * 1024,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
+    }),
+  );
+
+  // Rate limit per-IP on flood-prone unauthenticated endpoints.
+  // Token bucket: 5 req/sec sustained, 30 burst.
+  const floodGuard = rateLimit({ refillPerSec: 5, burst: 30 });
+  app.use("/v1/rate", floodGuard);
+  app.use("/v1/claim/*", floodGuard);
+  app.use("/telemetry", floodGuard);
 
   app.get("/", (c) =>
     c.json({

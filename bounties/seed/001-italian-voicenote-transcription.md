@@ -1,7 +1,8 @@
 ---
 id: 001
 title: "Transcribe an Italian voicenote with timestamps"
-capability: "audio.transcribe.it.json-with-timestamps"
+capability: "audio.transcribe.json-with-timestamps"
+hint_language: "it"
 max_price_usdc: "5.00"
 posted_by: "0x0000000000000000000000000000000000000000"
 posted_at: "2026-05-06"

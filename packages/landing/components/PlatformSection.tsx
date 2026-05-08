@@ -22,8 +22,9 @@ export function PlatformSection() {
             </h2>
             <p className="mt-5 max-w-2xl text-base text-[var(--color-fg)] leading-relaxed">
               We make money the same way{" "}
-              <span className="font-semibold">Cloudflare</span> does — on
-              the value-add layer, not on the bytes through the pipe.
+              <span className="font-semibold">Plaid</span> does — the rail
+              is free for the parties on it; we charge the developers and
+              platforms that need structured data on top.
             </p>
             <p className="mt-3 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
               Every transaction layer is direct, peer-to-peer, free at the
@@ -36,13 +37,12 @@ export function PlatformSection() {
 
         <div className="grid md:grid-cols-3 gap-6">
           <PlatformCard
-            label="Available now"
+            label="Opens Day 30 · waitlist"
             title="Insights API"
-            body="Granular reputation, latency p50/p95/p99, refund rate, leaderboards, capability-level fraud signals. The same data that ranks search results — query it directly."
+            body="Granular reputation, latency p50/p95/p99, refund rate, leaderboards, capability-level fraud signals. The same data that ranks search results — query it directly. (First 30 days are bootstrap — sample size is small and we say so.)"
             price="From $29/mo"
             href="https://github.com/Swarmwage/swarmwage/blob/main/docs/insights-api.md"
             ctaText="Read the spec"
-            live
           />
           <PlatformCard
             label="Planned · v1.0+"

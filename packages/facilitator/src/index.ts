@@ -8,6 +8,7 @@
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 
@@ -41,6 +42,16 @@ export function createApp(deps: FacilitatorAppDeps) {
       origin: "*",
       allowMethods: ["GET", "POST", "OPTIONS"],
       allowHeaders: ["Content-Type", "X-PAYMENT"],
+    }),
+  );
+
+  // Body cap. /verify and /settle carry an EIP-3009 authorization +
+  // payment requirements; well under 32KB even with verbose payloads.
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 32 * 1024,
+      onError: (c) => c.json({ error: "Payload too large" }, 413),
     }),
   );
 
