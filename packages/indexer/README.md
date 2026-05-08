@@ -112,6 +112,10 @@ docker run --rm -p 3002:3002 \
   `recipient_agent_id = null`. Backfilling the mapping later (e.g. when
   a seller registers an address) is a cheap UPDATE on the `to_address`
   index.
+- **Database security**: the schema does not define RLS policies. The
+  service connects via `DATABASE_URL` server-side with full privileges.
+  No browser-side Supabase client is used; PostgREST is not exposed; the
+  `anon` key is never deployed. If you ever wire one, add RLS first.
 
 ## License
 

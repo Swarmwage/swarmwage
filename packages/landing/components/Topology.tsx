@@ -14,8 +14,8 @@ export function Topology() {
       aria-hidden="true"
     >
       <div className="absolute -top-3 left-0 right-0 flex justify-between mono-label">
-        <span>fig.01 — protocol topology</span>
-        <span className="text-[var(--color-accent)]">live</span>
+        <span>fig.01 — example topology</span>
+        <span className="text-[var(--color-accent)]">draft</span>
       </div>
 
       <svg

@@ -134,6 +134,13 @@ docker run --rm -p 3001:3001 \
 - The in-memory log store is intended for local development only.
   Production deployments should connect a Postgres database that follows
   the schema in [`schema.sql`](./schema.sql).
+- **Database security**: the schema does not define RLS policies. The
+  service connects via `DATABASE_URL` server-side with full privileges.
+  No browser-side Supabase client is used; PostgREST is not exposed; the
+  `anon` key is never deployed. `facilitator_logs` contains buyer
+  signatures and EIP-3009 authorization fields — keep this DB
+  service-role-only. If you ever wire a browser client, add RLS first
+  AND consider redacting signatures on verify-only logs.
 
 ## License
 

@@ -126,6 +126,37 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     return c.json({ ok: true, listing });
   });
 
+  // Recipient → agent_id resolver. Used by the indexer to map an on-chain
+  // USDC `Transfer` event recipient to a known Swarmwage agent for L2 data
+  // capture. Today `agent_id` IS the wallet address — the lookup is a
+  // simple existence check on the agents table.
+  //
+  //   GET /v1/listings?recipient=0x...
+  //   200 { agent_id, recipient }   — recipient is a registered agent
+  //   404                           — recipient is not registered
+  //   400                           — missing or malformed recipient
+  app.get("/v1/listings", async (c) => {
+    const recipient = c.req.query("recipient");
+    if (!recipient) {
+      return c.json(
+        { error: "Missing required query param: recipient" },
+        400,
+      );
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(recipient)) {
+      return c.json({ error: "Invalid recipient address" }, 400);
+    }
+    const normalized = recipient.toLowerCase() as AgentId;
+    const agent = await store.getAgent(normalized);
+    if (!agent) {
+      return c.json(
+        { error: "No agent registered for this recipient" },
+        404,
+      );
+    }
+    return c.json({ agent_id: normalized, recipient: normalized });
+  });
+
   // -----------------------------------------------------------------------
   // Reputation
   // -----------------------------------------------------------------------
@@ -261,6 +292,21 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
 
   const RECEIPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+  // Receipts — Layer 3 of the 4-layer data capture model.
+  //
+  // TRUST MODEL (v0.3, Day-7 launch posture):
+  // The receipt's seller signature is verified, but the registry does NOT
+  // currently cross-check `tx_hash` / `amount_usdc_atomic` against indexed
+  // on-chain Transfer events. A malicious seller could submit signed
+  // receipts for transactions they did not receive. This is acceptable for
+  // bootstrap because reputation is a network signal — sellers caught
+  // submitting fake receipts forfeit it.
+  //
+  // PLANNED (Phase 1.4): a reconciliation job that reads `transactions`
+  // (L2, indexed) and flags receipts whose tx_hash is not present, whose
+  // recipient differs from `agent_id`, or whose value mismatches
+  // `amount_usdc_atomic`. Receipts so flagged are excluded from public
+  // reputation aggregates. See SPEC.md §10 for the full trust model.
   app.post("/v1/receipts", async (c) => {
     let body: unknown;
     try {

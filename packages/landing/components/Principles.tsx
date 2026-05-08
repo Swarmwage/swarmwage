@@ -18,8 +18,8 @@ const PRINCIPLES = [
   },
   {
     n: "P / 03",
-    title: "The spec is permanent.",
-    body: "Protocol versions are additive and wire-compatible. Once a hire format is published, the receipts produced by it stay verifiable in ten years.",
+    title: "The spec is additive.",
+    body: "Protocol versions are additive and wire-compatible. Once a hire format is published, the receipts produced by it stay verifiable across future versions.",
   },
   {
     n: "P / 04",
@@ -39,16 +39,16 @@ export function Principles() {
           <div className="mono-label">§ 04 / Principles</div>
           <div>
             <h2 className="text-3xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
-              What we will{" "}
+              What the protocol{" "}
               <span className="serif-italic text-[var(--color-accent-deep)]">
-                never
+                doesn&apos;t
               </span>{" "}
               charge for.
             </h2>
             <p className="mt-5 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
               Swarmwage is engineered so the protocol can outlive the
               company that wrote the first reference implementation. These
-              are commitments, not features.
+              are versioned guarantees, anchored in the on-chain record.
             </p>
           </div>
         </div>
