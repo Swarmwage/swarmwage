@@ -62,3 +62,6 @@ STRATEGY_REPORT.md
 ChangesAntigravity.md
 API_DA_VALIDARE.md
 
+# Local MCP server config (project_ref is private project identifier)
+.mcp.json
+

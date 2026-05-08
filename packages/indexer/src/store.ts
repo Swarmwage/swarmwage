@@ -1,11 +1,12 @@
-// Swarmwage Indexer — store interface + in-memory implementation
+// Swarmwage Indexer — store interface + implementations
 // License: BUSL-1.1
 //
 // The store persists indexed USDC Transfer events and the per-chain
-// `last_indexed_block` cursor. The in-memory implementation is intended
-// for local development and the smoke tests; production deployments
-// should swap in a Postgres adapter that targets the schema in
-// `schema.sql`.
+// `last_indexed_block` cursor. Two implementations are provided:
+// `InMemoryStore` for local development and the smoke tests, and
+// `PostgresStore` for production deployments. Both satisfy
+// `IndexerStore` and are interchangeable at the boot boundary based on
+// the presence of `DATABASE_URL`.
 
 export interface IndexedTransaction {
   chain_id: number;
@@ -89,8 +90,105 @@ export class InMemoryStore implements IndexerStore {
   }
 }
 
-// TODO: implement `PostgresStore` backed by `schema.sql`. The adapter
-// should accept a `pg.Pool` (or a Supabase client) and use
-// `INSERT ... ON CONFLICT (chain_id, block_number, log_index) DO NOTHING`
-// to remain idempotent under restart. The cursor table (`indexer_state`)
-// uses `INSERT ... ON CONFLICT (chain_id) DO UPDATE`.
+// ---------------------------------------------------------------------------
+// PostgresStore
+// ---------------------------------------------------------------------------
+
+import postgres from "postgres";
+type Sql = postgres.Sql<{ bigint: bigint }>;
+
+export interface PostgresStoreOptions {
+  /** Postgres connection string. Pooler URL recommended for serverless. */
+  connectionString: string;
+  /** Max pool connections. Defaults to 5 — Supabase Transaction pooler safe. */
+  max?: number;
+}
+
+/**
+ * Postgres-backed implementation of `IndexerStore`. Uses `ON CONFLICT
+ * DO NOTHING` on the `(chain_id, block_number, log_index)` natural key
+ * so range replays after restart remain idempotent. The cursor table
+ * (`indexer_state`) uses `ON CONFLICT (chain_id) DO UPDATE`.
+ *
+ * Schema: `packages/indexer/schema.sql`.
+ */
+export class PostgresStore implements IndexerStore {
+  private readonly sql: Sql;
+
+  constructor(opts: PostgresStoreOptions) {
+    this.sql = postgres(opts.connectionString, {
+      max: opts.max ?? 5,
+      // PgBouncer (Supavisor transaction-mode pooler) is incompatible
+      // with prepared statements. Disable so we work seamlessly behind
+      // the connection pooler on port 6543.
+      prepare: false,
+      types: {
+        bigint: postgres.BigInt,
+      },
+    });
+  }
+
+  async upsertTransactions(transactions: IndexedTransaction[]): Promise<void> {
+    if (transactions.length === 0) return;
+    // postgres-js bulk insert via `sql(values, ...keys)` shorthand. The
+    // `ON CONFLICT (chain_id, block_number, log_index) DO NOTHING` clause
+    // dedupes block-range replays after restart.
+    const rows = transactions.map((tx) => ({
+      chain_id: tx.chain_id,
+      block_number: tx.block_number,
+      log_index: tx.log_index,
+      tx_hash: tx.tx_hash,
+      from_address: tx.from_address,
+      to_address: tx.to_address,
+      recipient_agent_id: tx.recipient_agent_id,
+      value_usdc_atomic: tx.value_usdc_atomic,
+      ts: new Date(tx.ts * 1000),
+    }));
+    await this.sql`
+      INSERT INTO transactions ${this.sql(
+        rows,
+        "chain_id",
+        "block_number",
+        "log_index",
+        "tx_hash",
+        "from_address",
+        "to_address",
+        "recipient_agent_id",
+        "value_usdc_atomic",
+        "ts",
+      )}
+      ON CONFLICT (chain_id, block_number, log_index) DO NOTHING
+    `;
+  }
+
+  async getLastIndexedBlock(chainId: number): Promise<bigint | null> {
+    const rows = await this.sql<{ last_indexed_block: bigint }[]>`
+      SELECT last_indexed_block
+      FROM indexer_state
+      WHERE chain_id = ${chainId}
+    `;
+    return rows[0]?.last_indexed_block ?? null;
+  }
+
+  async setLastIndexedBlock(chainId: number, block: bigint): Promise<void> {
+    await this.sql`
+      INSERT INTO indexer_state (chain_id, last_indexed_block, updated_at)
+      VALUES (${chainId}, ${block}, NOW())
+      ON CONFLICT (chain_id) DO UPDATE
+        SET last_indexed_block = EXCLUDED.last_indexed_block,
+            updated_at = NOW()
+    `;
+  }
+
+  async size(): Promise<number> {
+    const rows = await this.sql<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM transactions
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /** Close the connection pool. Call on graceful shutdown. */
+  async close(): Promise<void> {
+    await this.sql.end({ timeout: 5 });
+  }
+}

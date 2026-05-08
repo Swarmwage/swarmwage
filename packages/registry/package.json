@@ -18,6 +18,7 @@
     "@hono/node-server": "^1.14.0",
     "@swarmwage/agent-sdk": "workspace:*",
     "hono": "^4.6.0",
+    "postgres": "^3.4.5",
     "viem": "^2.30.0",
     "zod": "^3.24.0"
   },

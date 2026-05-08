@@ -15,7 +15,11 @@ import { loadEnv } from "./env.js";
 import { createRelay } from "./relay.js";
 import { createSettleHandler } from "./routes/settle.js";
 import { createVerifyHandler } from "./routes/verify.js";
-import { InMemoryStore, type FacilitatorLogStore } from "./store.js";
+import {
+  InMemoryStore,
+  PostgresStore,
+  type FacilitatorLogStore,
+} from "./store.js";
 import {
   SupportedPaymentKindsResponseSchema,
   x402Versions,
@@ -102,11 +106,20 @@ let app: ReturnType<typeof createApp> | undefined;
 if (isEntry) {
   const env = loadEnv();
   const relay = createRelay(env);
-  const store: FacilitatorLogStore = new InMemoryStore();
+  const store: FacilitatorLogStore = env.databaseUrl
+    ? new PostgresStore({
+        connectionString: env.databaseUrl,
+        onError: (err) =>
+          process.stderr.write(
+            `facilitator.log_write_error ${err instanceof Error ? err.message : String(err)}\n`,
+          ),
+      })
+    : new InMemoryStore();
+  const storeKind = env.databaseUrl ? "postgres" : "memory";
   app = createApp({ relay, store });
   serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
-      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address})\n`,
+      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind})\n`,
     );
   });
 }

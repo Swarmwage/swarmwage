@@ -1,10 +1,11 @@
-// Swarmwage Facilitator — log store interface + in-memory implementation
+// Swarmwage Facilitator — log store interface + implementations
 // License: BUSL-1.1
 //
-// The store records every `/verify` and `/settle` interaction. The
-// in-memory implementation is intended for development and the smoke
-// tests; production deployments should swap in a Postgres adapter that
-// targets the schema in `schema.sql`.
+// The store records every `/verify` and `/settle` interaction. Two
+// implementations are provided: `InMemoryStore` for development and the
+// smoke tests, and `PostgresStore` for production deployments. Both
+// satisfy `FacilitatorLogStore` and are interchangeable at the boot
+// boundary based on the presence of `DATABASE_URL`.
 
 export type FacilitatorRoute = "verify" | "settle";
 
@@ -61,6 +62,95 @@ export class InMemoryStore implements FacilitatorLogStore {
   }
 }
 
-// TODO: implement `PostgresStore` backed by `schema.sql`. The adapter
-// should accept a `pg.Pool` (or a Supabase client) and stream writes
-// non-blockingly so request handlers do not pay database latency.
+// ---------------------------------------------------------------------------
+// PostgresStore
+// ---------------------------------------------------------------------------
+
+import postgres from "postgres";
+// Register the `bigint` type so atomic USDC amounts and gas-wei values
+// (which routinely exceed `Number.MAX_SAFE_INTEGER`) round-trip safely.
+type Sql = postgres.Sql<{ bigint: bigint }>;
+
+export interface PostgresStoreOptions {
+  /** Postgres connection string. Pooler URL recommended for serverless. */
+  connectionString: string;
+  /** Max pool connections. Defaults to 5 — Supabase Transaction pooler safe. */
+  max?: number;
+  /** Optional logger to surface non-fatal write errors. */
+  onError?: (err: unknown) => void;
+}
+
+/**
+ * Postgres-backed implementation of `FacilitatorLogStore`. Writes are
+ * synchronous (the caller awaits commit) so log loss is bounded by the
+ * database SLA rather than by process lifetime. If you need non-blocking
+ * writes for tail-latency reasons, wrap this with an in-memory buffer +
+ * flush worker — keep this implementation honest first.
+ *
+ * Schema: `packages/facilitator/schema.sql`.
+ */
+export class PostgresStore implements FacilitatorLogStore {
+  private readonly sql: Sql;
+  private readonly onError: (err: unknown) => void;
+
+  constructor(opts: PostgresStoreOptions) {
+    this.sql = postgres(opts.connectionString, {
+      max: opts.max ?? 5,
+      // Connection pooler (PgBouncer) is incompatible with prepared statements.
+      // Disable the prepared-statement cache so we work seamlessly behind
+      // Supavisor's transaction-mode pooler on port 6543.
+      prepare: false,
+      // Postgres BIGINT → JS string (avoid silent precision loss). The
+      // facilitator log uses bigint for atomic-USDC amounts and gas-wei,
+      // both of which can exceed Number.MAX_SAFE_INTEGER.
+      types: {
+        bigint: postgres.BigInt,
+      },
+    });
+    this.onError = opts.onError ?? (() => undefined);
+  }
+
+  async appendLog(entry: FacilitatorLogEntry): Promise<void> {
+    try {
+      await this.sql`
+        INSERT INTO facilitator_logs (
+          ts, route, network, agent_id, capability,
+          payer_address, recipient_address, amount_usdc_atomic,
+          tx_hash, gas_eth_spent_wei, latency_ms,
+          ok, error, raw_request, raw_response
+        ) VALUES (
+          to_timestamp(${entry.ts}::double precision / 1000),
+          ${entry.route},
+          ${entry.network},
+          ${entry.agent_id},
+          ${entry.capability},
+          ${entry.payer_address},
+          ${entry.recipient_address},
+          ${BigInt(entry.amount_usdc_atomic)},
+          ${entry.tx_hash},
+          ${entry.gas_eth_spent_wei !== null ? BigInt(entry.gas_eth_spent_wei) : null},
+          ${entry.latency_ms},
+          ${entry.ok},
+          ${entry.error},
+          ${this.sql.json(entry.raw_request as never)},
+          ${this.sql.json(entry.raw_response as never)}
+        )
+      `;
+    } catch (err) {
+      this.onError(err);
+      throw err;
+    }
+  }
+
+  async size(): Promise<number> {
+    const rows = await this.sql<{ count: string }[]>`
+      SELECT COUNT(*)::text AS count FROM facilitator_logs
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /** Close the connection pool. Call on graceful shutdown. */
+  async close(): Promise<void> {
+    await this.sql.end({ timeout: 5 });
+  }
+}

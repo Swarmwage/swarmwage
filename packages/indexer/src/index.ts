@@ -16,7 +16,7 @@ import { createChainContext, type ChainContext } from "./chain.js";
 import { loadEnv, type IndexerEnv } from "./env.js";
 import { createIndexer, type IndexerHandle, type IndexerLogger } from "./indexer.js";
 import { createRegistryClient, type RegistryResolver } from "./registry.js";
-import { InMemoryStore, type IndexerStore } from "./store.js";
+import { InMemoryStore, PostgresStore, type IndexerStore } from "./store.js";
 
 export interface IndexerAppDeps {
   chain: ChainContext;
@@ -128,7 +128,12 @@ if (isEntry) {
     network: env.network,
     rpcUrl: env.rpcUrl,
   });
-  const store: IndexerStore = new InMemoryStore();
+  const store: IndexerStore = env.databaseUrl
+    ? new PostgresStore({ connectionString: env.databaseUrl })
+    : new InMemoryStore();
+  const storeKind: "memory" | "postgres" = env.databaseUrl
+    ? "postgres"
+    : "memory";
   const registry: RegistryResolver = createRegistryClient({
     baseUrl: env.registryUrl,
   });
@@ -143,10 +148,10 @@ if (isEntry) {
     intervalMs: env.indexIntervalSeconds * 1000,
     logger,
   });
-  app = createApp({ chain, store, indexer, storeKind: "memory" });
+  app = createApp({ chain, store, indexer, storeKind });
   serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
-      `swarmwage-indexer v0.0.1 listening on http://localhost:${info.port} (network=${chain.network}, registry=${env.registryUrl})\n`,
+      `swarmwage-indexer v0.0.1 listening on http://localhost:${info.port} (network=${chain.network}, registry=${env.registryUrl}, store=${storeKind})\n`,
     );
   });
 

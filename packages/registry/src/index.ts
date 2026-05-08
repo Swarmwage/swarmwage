@@ -8,17 +8,27 @@
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./app.js";
-
-const { app } = createApp();
+import { loadEnv } from "./env.js";
+import { PostgresStore } from "./store/postgres.js";
+import type { RegistryStore } from "./store/types.js";
 
 // Skip starting the HTTP server when imported as a library (tests). The
 // `start` and `dev` package scripts run via tsx without setting this flag,
 // so production behavior is unchanged.
-if (process.env.SWARMWAGE_REGISTRY_NO_LISTEN !== "1") {
-  const port = Number(process.env.PORT ?? 3000);
-  serve({ fetch: app.fetch, port }, (info) => {
+const shouldListen = process.env.SWARMWAGE_REGISTRY_NO_LISTEN !== "1";
+
+const env = loadEnv();
+const store: RegistryStore | undefined = env.databaseUrl
+  ? new PostgresStore({ connectionString: env.databaseUrl })
+  : undefined;
+const storeKind: "memory" | "postgres" = env.databaseUrl ? "postgres" : "memory";
+
+const { app } = createApp({ store });
+
+if (shouldListen) {
+  serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
-      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port}\n`,
+      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})\n`,
     );
   });
 }
