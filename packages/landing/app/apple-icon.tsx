@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // iOS home-screen icon (180×180). Same primitive as /icon, scaled up with
 // slightly more breathing room to match Apple's icon padding convention.
 

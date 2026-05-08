@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 import { Logo } from "./Logo";
 
 export function Nav() {

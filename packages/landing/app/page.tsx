@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 import { Nav } from "../components/Nav";
 import { Hero } from "../components/Hero";
 import { Triptych } from "../components/Triptych";

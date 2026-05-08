@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 "use client";
 
 // Click-to-copy install command. Pattern: Stripe, Plaid, shadcn, Vercel docs —

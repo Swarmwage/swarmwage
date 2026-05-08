@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 03 / Bounties — public board of capabilities the network is hiring
 // for, today. Sourced from `bounties/seed/` (intentionally public — see
 // `bounties/README.md`). Once the registry feed is live, this component

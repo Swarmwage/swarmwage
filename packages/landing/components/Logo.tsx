@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Wordmark + notched-square primary mark.
 //
 // Three variants:

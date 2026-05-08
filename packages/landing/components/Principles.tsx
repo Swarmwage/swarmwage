@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 04 / Principles — four protocol-level commitments. Use descriptive
 // language only ("doesn't charge", "in v0.3"); avoid permanent claims
 // ("forever", "never charge") in public copy. Credibility comes from

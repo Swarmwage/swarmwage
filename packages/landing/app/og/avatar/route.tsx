@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // /og/avatar?size=N — square brand avatar generator.
 //
 // Used to export PNG assets for Discord (512), X (400), GitHub org (500),

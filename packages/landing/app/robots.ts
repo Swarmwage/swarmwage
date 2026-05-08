@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Next 15 file-based metadata: auto-served at /robots.txt.
 // Liberal allow-all — pre-launch we want every crawler (including
 // AI search like Perplexity, ChatGPT, Claude, Bing) reading the page.

@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 import { Topology } from "./Topology";
 import { CopyCommand } from "./CopyCommand";
 

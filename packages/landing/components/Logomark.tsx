@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Notched square — Swarmwage primary mark.
 //
 // Geometry: a 100×100 square with the top-right corner cut as a 90° inward

@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Reusable code-block wrapper styled as a small terminal pane.
 // Header bar shows a mono ">_" + title; body holds <pre>/<code>.
 

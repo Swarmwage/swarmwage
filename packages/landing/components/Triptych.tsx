@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 01 / Protocol — three primitives. Each card has a small visual that
 // illustrates the shape of the response/state, NOT live data. Visuals are
 // labeled "example" explicitly so they can never be mistaken for vanity

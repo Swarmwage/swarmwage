@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 05 / CTA — final pitch + the three concrete MCP install paths.
 // Preserves the install snippets from the previous landing because those
 // are the real dev value that actually moves the needle.

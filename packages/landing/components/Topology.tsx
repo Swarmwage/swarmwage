@@ -1,5 +1,6 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Hero diagram: agent topology with central registry node.
-// License: Closed (landing package is not open-source).
 //
 // Decorative — no data binding. The graph reads as "fig.01 — protocol
 // topology". Lines are deliberately dashed/handdrawn-feeling (stroke

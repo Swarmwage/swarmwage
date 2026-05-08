@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 "use client";
 
 // Tabbed install snippets. Replaces a 250px-tall vertical stack of three

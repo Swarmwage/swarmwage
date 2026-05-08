@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // Browser tab favicon. Next 15 file-based metadata: this file is auto-discovered
 // and injected as <link rel="icon"> with the right size + content-type.
 //

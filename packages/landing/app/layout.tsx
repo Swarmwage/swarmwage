@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 import type { Metadata, Viewport } from "next";
 import {
   Inter_Tight,

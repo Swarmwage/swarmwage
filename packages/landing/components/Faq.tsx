@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 06 / FAQ — entity-rich, citation-ready answers for AI search engines
 // (ChatGPT, Perplexity, Claude, Bing) and human visitors. Mirrors the
 // JSON-LD FAQPage block in app/layout.tsx — keep the two in sync.

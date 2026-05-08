@@ -1,3 +1,5 @@
+// © 2026 Swarmwage. Proprietary — all rights reserved.
+
 // § 02 / Platform — frames the off-protocol services that monetize the
 // network without taxing the protocol itself. Honestly-labeled "planned"
 // for everything not yet shipping. No invented fee tiers.
