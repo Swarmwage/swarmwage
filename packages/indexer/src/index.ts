@@ -145,6 +145,7 @@ if (isEntry) {
     chainId: chain.chainId,
     startBlock: env.startBlock,
     maxBlockRange: env.maxBlockRange,
+    confirmationDepth: env.confirmationDepth,
     intervalMs: env.indexIntervalSeconds * 1000,
     logger,
   });

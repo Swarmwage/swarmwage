@@ -71,15 +71,19 @@ export function createApp(deps: FacilitatorAppDeps) {
       const balance = await relay.gasBalance();
       ethBalanceWei = balance.toString();
     } catch {
-      // Surface health as degraded rather than 500 — the service can still
-      // accept /verify requests that do not strictly require RPC reachability.
+      // RPC unreachable. Body keeps the structured payload; status flips to
+      // 503 so load balancers drain this instance instead of routing traffic.
     }
-    return c.json({
-      ok: ethBalanceWei !== null,
-      network: relay.network,
-      gas_wallet: relay.account.address,
-      eth_balance_wei: ethBalanceWei,
-    });
+    const ok = ethBalanceWei !== null;
+    return c.json(
+      {
+        ok,
+        network: relay.network,
+        gas_wallet: relay.account.address,
+        eth_balance_wei: ethBalanceWei,
+      },
+      ok ? 200 : 503,
+    );
   });
 
   app.get("/supported", (c) => {

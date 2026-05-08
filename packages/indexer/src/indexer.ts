@@ -34,6 +34,13 @@ export interface IndexerDeps {
   startBlock?: bigint;
   /** Max blocks per `eth_getLogs` call. */
   maxBlockRange: number;
+  /**
+   * Number of blocks to lag behind the chain head before a block is treated
+   * as final. Protects the `transactions` table from short reorgs on Base —
+   * `latest - confirmationDepth` is the highest block the cursor will advance
+   * to. Default 0 (legacy / test-friendly); production bootstrap sets 1+.
+   */
+  confirmationDepth?: number;
   /** Sleep between idle ticks, in ms. */
   intervalMs: number;
   logger?: IndexerLogger;
@@ -69,6 +76,7 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
     intervalMs,
   } = deps;
   const logger = deps.logger ?? noopLogger;
+  const confirmationDepth = BigInt(deps.confirmationDepth ?? 0);
   const usdcAddress = USDC_ADDRESS[network];
 
   let cursor: bigint | null = null;
@@ -175,10 +183,19 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
     }
     latestKnown = latest;
 
-    if (from > latest) {
+    // The cursor is only allowed to advance to `latest - confirmationDepth`.
+    // Blocks newer than that are still subject to reorg on Base; indexing
+    // them would poison `transactions` with rows that reference orphaned
+    // blocks. `safeLatest` is clamped to 0 when the chain is younger than
+    // the configured depth (only relevant on local devnets).
+    const safeLatest =
+      latest > confirmationDepth ? latest - confirmationDepth : 0n;
+
+    if (from > safeLatest) {
       logger.debug("indexer.tick.idle", {
         cursor: startCursor.toString(),
         latest: latest.toString(),
+        safe_latest: safeLatest.toString(),
       });
       return 0;
     }
@@ -187,8 +204,9 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
 
     // Catch-up loop: if we are far behind the head, process consecutive
     // batches without sleeping until we are within one batch of the tip.
-    while (from <= latest) {
-      const to = from + rangeSize - 1n > latest ? latest : from + rangeSize - 1n;
+    while (from <= safeLatest) {
+      const to =
+        from + rangeSize - 1n > safeLatest ? safeLatest : from + rangeSize - 1n;
       try {
         const n = await processRange(from, to);
         written += n;

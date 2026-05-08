@@ -33,6 +33,11 @@ const EnvSchema = z.object({
     .optional()
     .transform((v) => (v ? Number.parseInt(v, 10) : 2000))
     .pipe(z.number().int().positive()),
+  CONFIRMATION_DEPTH: z
+    .string()
+    .optional()
+    .transform((v) => (v ? Number.parseInt(v, 10) : 1))
+    .pipe(z.number().int().nonnegative()),
   DATABASE_URL: z.string().url().optional(),
   LOG_LEVEL: LogLevelSchema.default("info"),
 });
@@ -45,6 +50,7 @@ export type IndexerEnv = {
   startBlock: bigint | undefined;
   indexIntervalSeconds: number;
   maxBlockRange: number;
+  confirmationDepth: number;
   databaseUrl: string | undefined;
   logLevel: LogLevel;
 };
@@ -73,6 +79,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): IndexerEnv {
     startBlock: e.START_BLOCK,
     indexIntervalSeconds: e.INDEX_INTERVAL_SECONDS,
     maxBlockRange: e.MAX_BLOCK_RANGE,
+    confirmationDepth: e.CONFIRMATION_DEPTH,
     databaseUrl: e.DATABASE_URL,
     logLevel: e.LOG_LEVEL,
   };
