@@ -1,39 +1,100 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #07070b;
-  --color-bg-2: #0d0d14;
-  --color-fg: #e9e9f0;
-  --color-fg-muted: #9999a8;
-  --color-accent: #8b5cf6;
-  --color-accent-2: #06b6d4;
-  --color-border: #1f1f2a;
+  /* Bone — warm sand neutral. Always-light: forced regardless of OS dark mode
+     so the brand is consistent and readable on every share / device. */
+  --color-bg: #f5f1e8;
+  --color-bg-2: #ede8da;
+  --color-bg-3: #fbf8f0;
+  --color-fg: #0a0a0a;
+  --color-fg-muted: #5a5a5a;
+  --color-fg-muted-2: #8a8a8a;
+  --color-rule: rgba(10, 10, 10, 0.08);
+  --color-rule-strong: rgba(10, 10, 10, 0.16);
 
-  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Helvetica, Arial, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Deep violet primary accent. Uncrowded in the AI-infra cluster.
+     Aligned with CLAUDE.md original brand direction (deep-blue/violet).
+     Three-tier system:
+       --color-accent       authority (headlines, CTAs, mark, code keywords)
+       --color-accent-deep  gravity   (link hover, gradient end, depth)
+       --color-accent-soft  warmth    (secondary highlights, syntax, tags)
+     Soft tier darkened from #A78BFA to reach AA contrast ~4.8:1 on bone bg. */
+  --color-accent: #7C3AED;
+  --color-accent-deep: #5B21B6;
+  --color-accent-soft: #8B6FE8;
+
+  /* Reserved for Swarm L3 consumer sub-brand at Day 90+.
+     Do NOT use on Swarmwage corporate surface. */
+  --color-swarm-lavender: #B8A4FB;
+
+  /* Status palette (network feed dots, contract states). */
+  --color-ok: #10B981;
+  --color-warn: #F59E0B;
+  --color-info: #3B82F6;
+
+  --font-sans: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: "Instrument Serif", "Inter Tight", serif;
 }
 
-html,
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
 body {
+  font-family: var(--font-sans);
   background: var(--color-bg);
   color: var(--color-fg);
-  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+  line-height: 1.45;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Mono uppercase eyebrow / fig.NN labels — gravitas signal. */
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-fg-muted);
+}
+
+.serif-italic {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-2));
+  background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-deep) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.grid-bg {
-  background-image:
-    radial-gradient(circle at 30% 10%, rgba(139, 92, 246, 0.18), transparent 40%),
-    radial-gradient(circle at 80% 90%, rgba(6, 182, 212, 0.14), transparent 40%),
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+/* Wordmark / logo. Geist Mono is the brand display font. Lowercase + dot
+   terminator + violet accent on the period. Atemporal, dev-native, scales
+   16px → billboard. */
+.wordmark {
+  font-family: var(--font-display-mono), ui-monospace, "SF Mono", monospace;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  text-transform: lowercase;
+  font-feature-settings: "ss01", "ss02";
 }

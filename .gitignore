@@ -65,3 +65,6 @@ API_DA_VALIDARE.md
 # Local MCP server config (project_ref is private project identifier)
 .mcp.json
 
+# Repo is pnpm-only; reject accidental npm-generated lockfiles
+package-lock.json
+
