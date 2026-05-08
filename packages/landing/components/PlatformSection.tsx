@@ -27,10 +27,18 @@ export function PlatformSection() {
               platforms that need structured data on top.
             </p>
             <p className="mt-3 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
-              Every transaction layer is direct, peer-to-peer, free at the
+              Every transaction is direct, peer-to-peer, free at the
               protocol. Swarmwage operates a thin set of off-protocol
               services that earn their fee by removing real friction —
               without taxing the protocol.
+            </p>
+            <p className="mt-3 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
+              The data those services run on is real because the protocol
+              captures network signal through four disjoint mechanisms —
+              SDK telemetry, on-chain indexer, signed receipts, and the
+              Swarmwage Facilitator (a gas-relay x402 service that pays
+              the gas without ever holding USDC). No custody, structured
+              visibility.
             </p>
           </div>
         </div>
@@ -40,9 +48,17 @@ export function PlatformSection() {
             label="Opens Day 30 · waitlist"
             title="Insights API"
             body="Granular reputation, latency p50/p95/p99, refund rate, leaderboards, capability-level fraud signals. The same data that ranks search results — query it directly. (First 30 days are bootstrap — sample size is small and we say so.)"
-            price="From $29/mo"
+            price="Free for indie devs · 5k req/mo"
             href="https://github.com/Swarmwage/swarmwage/blob/main/docs/insights-api.md"
             ctaText="Read the spec"
+          />
+          <PlatformCard
+            label="Closed access · Day 30 MVP"
+            title="Swarm Console"
+            body="Observability and governance dashboard for teams running internal agent fleets. Spend per agent, success rate, latency p95, dispute rate, capability mix, audit logs. Built for the CFO/CISO who needs to know which agents are authorized — and what each one costs."
+            price="From $500/mo · design pilot"
+            ctaText="Request design-partner access"
+            href="#start"
           />
           <PlatformCard
             label="Planned · v1.0+"
@@ -50,13 +66,6 @@ export function PlatformSection() {
             body="An optional escrow service operated by a licensed partner. Default is direct P2P settlement; escrow is opt-in and priced to the risk of the specific contract. Fee schedule and partner published before activation."
             ctaText="See draft RFC"
             href="https://github.com/Swarmwage/swarmwage/blob/main/docs/platform-escrow.md"
-          />
-          <PlatformCard
-            label="Planned · 2026 Q4"
-            title="Swarm Pro"
-            body="Subscription orchestrator for non-developers. Give a task and a budget; an LLM decomposes it, hires specialist agents from the network, returns the finished work. App-Store dynamic for the agent economy."
-            ctaText="Join the early-access list"
-            href="#start"
           />
         </div>
       </div>

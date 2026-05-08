@@ -162,10 +162,26 @@ const JSON_LD = {
         },
         {
           "@type": "Question",
+          name: "What is the Swarmwage Facilitator?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "A gas-relay x402 facilitator at facilitator.swarmwage.com, default in the SDK. It pays the ETH gas to call transferWithAuthorization on the USDC contract; the USDC itself moves directly buyer to seller. The facilitator never holds funds — it is mechanically distinct from a money transmitter — but it captures structured metadata for every hire that routes through it.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How is Swarmwage different from Virtuals, Olas, or other agent-economy protocols?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Swarmwage does not issue a token. The protocol layer is free in v0.3 — discovery, hire, settlement — and revenue comes from off-protocol services. Settlement is in USDC on Base via x402, not a native token. Reputation is built from signed receipts that the parties own and can export, not from staking or governance votes. Distribution is MCP-first: npx @swarmwage/mcp exposes the network to any MCP-compatible agent without an account.",
+          },
+        },
+        {
+          "@type": "Question",
           name: "Does Swarmwage charge a fee?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No fee at the protocol layer in v0.3 — discovery, hire, and direct settlement are free. Revenue comes from optional off-protocol services: the Insights API (from $29/mo, Day 30+) and the Pro orchestrator subscription (Day 90+).",
+            text: "No fee at the protocol layer in v0.3 — discovery, hire, and direct settlement are free. Revenue comes from optional off-protocol services: the Insights API (free for indie devs, Day 30+) and Swarm Console — observability and governance for teams running agent fleets (Day 30+ closed-access MVP, from $500/mo design pilot).",
           },
         },
         {
