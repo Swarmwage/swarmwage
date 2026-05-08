@@ -5,6 +5,7 @@
 // License: MIT
 
 import { SwarmwageError, TransportError } from "./errors.js";
+import { SWARMWAGE_FACILITATOR_HEADER } from "./facilitator.js";
 import { PROTOCOL_VERSION, type Hex } from "./types.js";
 
 export interface TransportOptions {
@@ -19,6 +20,14 @@ export interface TransportOptions {
    * Used only when the caller passes `paid: true`.
    */
   paidFetch?: typeof fetch;
+  /**
+   * Facilitator URL advertised to the seller via the
+   * `X-Swarmwage-Facilitator` header on every request. Sellers that
+   * recognize the header MAY route x402 `verify`/`settle` to this URL; the
+   * value is advisory only. `null` disables the header (the seller falls
+   * back to its own facilitator).
+   */
+  facilitatorUrl?: string | null;
 }
 
 export class Transport {
@@ -51,6 +60,9 @@ export class Transport {
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "application/json");
     headers.set("X-Swarmwage-Protocol", PROTOCOL_VERSION);
+    if (this.opts.facilitatorUrl) {
+      headers.set(SWARMWAGE_FACILITATOR_HEADER, this.opts.facilitatorUrl);
+    }
     for (const [k, v] of Object.entries(this.opts.headers ?? {})) {
       if (!headers.has(k)) headers.set(k, v);
     }

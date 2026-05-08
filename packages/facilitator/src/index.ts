@@ -1,0 +1,114 @@
+// Swarmwage Facilitator — gas-relay-only x402 facilitator
+// License: BUSL-1.1
+//
+// HTTP entry point. Wires the relay, log store, and Hono routes.
+// The facilitator wallet ONLY pays ETH for gas. The USDC moves directly
+// buyer → seller via the USDC contract; this service never holds, custodies,
+// or transfers USDC at any point in the flow.
+
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { logger as honoLogger } from "hono/logger";
+
+import { loadEnv } from "./env.js";
+import { createRelay } from "./relay.js";
+import { createSettleHandler } from "./routes/settle.js";
+import { createVerifyHandler } from "./routes/verify.js";
+import { InMemoryStore, type FacilitatorLogStore } from "./store.js";
+import {
+  SupportedPaymentKindsResponseSchema,
+  x402Versions,
+} from "./types.js";
+
+export interface FacilitatorAppDeps {
+  relay: ReturnType<typeof createRelay>;
+  store: FacilitatorLogStore;
+}
+
+export function createApp(deps: FacilitatorAppDeps) {
+  const { relay, store } = deps;
+  const app = new Hono();
+
+  app.use("*", honoLogger());
+  app.use(
+    "*",
+    cors({
+      origin: "*",
+      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Content-Type", "X-PAYMENT"],
+    }),
+  );
+
+  app.get("/", (c) =>
+    c.json({
+      name: "swarmwage-facilitator",
+      version: "0.0.1",
+      role: "gas-relay-only x402 facilitator",
+      network: relay.network,
+      repository: "https://github.com/Swarmwage/swarmwage",
+    }),
+  );
+
+  app.get("/health", async (c) => {
+    let ethBalanceWei: string | null = null;
+    try {
+      const balance = await relay.gasBalance();
+      ethBalanceWei = balance.toString();
+    } catch {
+      // Surface health as degraded rather than 500 — the service can still
+      // accept /verify requests that do not strictly require RPC reachability.
+    }
+    return c.json({
+      ok: ethBalanceWei !== null,
+      network: relay.network,
+      gas_wallet: relay.account.address,
+      eth_balance_wei: ethBalanceWei,
+    });
+  });
+
+  app.get("/supported", (c) => {
+    const body = SupportedPaymentKindsResponseSchema.parse({
+      kinds: [
+        {
+          x402Version: x402Versions[0],
+          scheme: "exact",
+          network: relay.network,
+        },
+      ],
+    });
+    return c.json(body);
+  });
+
+  app.post("/verify", createVerifyHandler({ relay, store }));
+  app.post("/settle", createSettleHandler({ relay, store }));
+
+  return app;
+}
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+// Only run the listener when this module is the process entry point. This
+// keeps the export usable from tests without binding a real port.
+const isEntry =
+  typeof process !== "undefined" &&
+  process.argv[1] !== undefined &&
+  import.meta.url === `file://${process.argv[1]}`;
+
+let app: ReturnType<typeof createApp> | undefined;
+
+if (isEntry) {
+  const env = loadEnv();
+  const relay = createRelay(env);
+  const store: FacilitatorLogStore = new InMemoryStore();
+  app = createApp({ relay, store });
+  serve({ fetch: app.fetch, port: env.port }, (info) => {
+    process.stderr.write(
+      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address})\n`,
+    );
+  });
+}
+
+export { app };

@@ -18,6 +18,11 @@
   "engines": {
     "node": ">=20"
   },
+  "pnpm": {
+    "overrides": {
+      "viem": "^2.30.0"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Swarmwage/swarmwage.git"

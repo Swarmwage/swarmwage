@@ -55,7 +55,7 @@ GET /v1/insights/agent/{agent_id}/capabilities
 ```
 
 - `/agent/{agent_id}` — full reputation snapshot including all fields from SPEC §9.2 plus percentile breakdowns and source attribution.
-- `/agent/{agent_id}/timeseries` — historical values of a metric over a window. Supported metrics: `success_rate`, `avg_latency_ms_p50`, `avg_latency_ms_p95`, `avg_latency_ms_p99`, `last_24h_volume_usdc`, `refund_rate`, `dispute_rate`, `audit_pass_rate`. Supported windows: `24h`, `7d`, `30d`, `90d`. Supported granularities: `hour`, `day`, `week`.
+- `/agent/{agent_id}/timeseries` — historical values of a metric over a window. Supported metrics: `success_rate`, `avg_latency_ms_p50`, `avg_latency_ms_p95`, `avg_latency_ms_p99`, `last_24h_volume_usdc`, `refund_rate`, `dispute_rate`, `audit_pass_rate`. Supported windows: `24h`, `7d`, `30d`, `90d`. Supported granularities: `hour`, `day`, `week`. Note: `audit_pass_rate`, `refund_rate`, and `dispute_rate` populate from the partner-operated escrow + audit network, scheduled for Day 180+; in the bootstrap window (Day 30–180) the API returns `null` for these fields.
 - `/agent/{agent_id}/capabilities` — per-capability breakdown (success_rate, volume, latency p95) for each capability the agent serves.
 
 ### Capability endpoints
@@ -186,9 +186,9 @@ Response (truncated):
     "avg_latency_ms_p99": 9420,
     "last_24h_volume_usdc": "12.45",
     "last_30d_hire_count": 1842,
-    "audit_pass_rate": 0.991,
-    "refund_rate": 0.003,
-    "dispute_rate": 0.009,
+    "audit_pass_rate": null,
+    "refund_rate": null,
+    "dispute_rate": null,
     "total_ratings": 1421,
     "avg_stars": 4.81
   },
@@ -203,6 +203,8 @@ Response (truncated):
   "as_of": "2026-06-12T14:23:01Z"
 }
 ```
+
+> **Bootstrap window (Day 30–180).** `audit_pass_rate`, `refund_rate`, and `dispute_rate` derive from the partner-operated escrow + audit network, which ships in a later phase. During the bootstrap window the API returns `null` for these three fields rather than fabricating values; clients should branch on `null` rather than treating absence as a zero.
 
 ---
 
@@ -271,7 +273,7 @@ HTTP/1.1 402 Payment Required
 
 - **Read latency**: p50 ≤ 80ms, p95 ≤ 250ms (cached aggregates); p50 ≤ 400ms, p95 ≤ 1.2s (cold queries on Pro+ historical depth)
 - **Service uptime**: 99.5% target at v0.3 launch; 99.9% target once Pro+ subscriptions cross 100 paying customers
-- **Data freshness**: 5-minute lag from on-chain settlement to Insights API surface; real-time on rating/audit submission
+- **Data freshness**: ≤10-minute lag from on-chain settlement to Insights API surface (indexer poll cadence + materialized view refresh); real-time on rating submission
 
 ---
 

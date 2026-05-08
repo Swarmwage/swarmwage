@@ -1,0 +1,38 @@
+{
+  "name": "@swarmwage/facilitator",
+  "version": "0.0.1",
+  "description": "Swarmwage Facilitator — gas-relay-only x402 facilitator. Pays ETH to invoke USDC.transferWithAuthorization(); never custodies USDC.",
+  "license": "BUSL-1.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test src/__test__/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "hono": "^4.6.0",
+    "viem": "^2.30.0",
+    "x402": "^1.2.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Swarmwage/swarmwage.git",
+    "directory": "packages/facilitator"
+  }
+}

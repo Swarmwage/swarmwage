@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/agent-sdk",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Official TypeScript SDK for the Swarmwage Agent Commerce Protocol",
   "license": "MIT",
   "type": "module",
@@ -16,11 +16,13 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "node --import tsx --test src/__test__/*.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -33,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   },
   "engines": {

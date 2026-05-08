@@ -18,6 +18,7 @@ import {
   type BudgetState,
 } from "./budget.js";
 import { createTelemetry } from "./telemetry.js";
+import { resolveFacilitatorUrl } from "./facilitator.js";
 import { verify } from "./verification.js";
 import {
   HireRefusedError,
@@ -57,12 +58,33 @@ export interface AgentClientOptions extends WalletConfig {
   network?: SwarmwageNetwork;
   /** Override the JSON-RPC URL. Defaults to viem's public RPC for the network. */
   rpcUrl?: string;
+  /**
+   * x402 facilitator URL advertised to sellers on every paid request.
+   *
+   * - `undefined` (default): use `https://facilitator.swarmwage.com` unless
+   *   env `SWARMWAGE_FACILITATOR` is set to `0`/`false`/`off`/`no`.
+   * - `null`: opt out — the seller uses its own facilitator from the 402
+   *   challenge.
+   * - non-empty string: use this URL instead of the default.
+   *
+   * The Swarmwage Facilitator is a gas-relay-only x402 service: it pays ETH
+   * to invoke `USDC.transferWithAuthorization()` on behalf of the buyer.
+   * Funds move directly from buyer to seller — the facilitator never
+   * custodies USDC.
+   */
+  facilitatorUrl?: string | null;
 }
 
 export class AgentClient {
   readonly wallet: AgentWallet;
   readonly registryUrl: string;
   readonly network: SwarmwageNetwork;
+  /**
+   * Resolved facilitator URL advertised on paid requests, or `null` when the
+   * SDK falls back to the seller's facilitator. Read-only; set at construct
+   * time from `opts.facilitatorUrl` and the env.
+   */
+  readonly facilitatorUrl: string | null;
   private budgetState: BudgetState | null;
   private readonly transport: Transport;
   private readonly telemetry: ReturnType<typeof createTelemetry>;
@@ -72,6 +94,9 @@ export class AgentClient {
     this.wallet = createWallet({ privateKey: opts.privateKey });
     this.registryUrl = opts.registryUrl ?? "https://api.swarmwage.com";
     this.network = opts.network ?? "base-sepolia";
+    this.facilitatorUrl = resolveFacilitatorUrl({
+      facilitatorUrl: opts.facilitatorUrl,
+    });
 
     const chain = this.network === "base" ? base : baseSepolia;
     this.walletClient = createWalletClient({
@@ -89,7 +114,11 @@ export class AgentClient {
     ) as unknown as typeof fetch;
 
     this.budgetState = opts.budget ? createBudgetState(opts.budget) : null;
-    this.transport = new Transport({ baseUrl: this.registryUrl, paidFetch });
+    this.transport = new Transport({
+      baseUrl: this.registryUrl,
+      paidFetch,
+      facilitatorUrl: this.facilitatorUrl,
+    });
     this.telemetry = createTelemetry({
       enabled: opts.telemetry,
       agentId: this.wallet.agentId,
@@ -187,7 +216,7 @@ export class AgentClient {
           globalThis.fetch,
           this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
           undefined,
-          makeAntiHijackSelector(sellerId, this.network),
+          makeAntiHijackSelector(sellerId, this.network, this.facilitatorUrl),
         ) as unknown as typeof fetch)
       : undefined;
 
@@ -360,9 +389,16 @@ function isZeroHash(h: string | undefined | null): boolean {
 }
 
 /**
- * Build an x402 PaymentRequirementsSelector that accepts a payment requirement
- * only if its `payTo` matches the buyer's expected sellerId. Used by
- * `AgentClient.hire` to guard against endpoint hijacks and stale listings.
+ * Build an x402 PaymentRequirementsSelector that:
+ *  1. Forces selection to our configured network (rejects cross-chain
+ *     requirements an attacker could splice in to drain a wallet that holds
+ *     funds elsewhere).
+ *  2. Accepts a payment requirement only if its `payTo` matches the buyer's
+ *     expected sellerId.
+ *  3. Optionally annotates `extra.swarmwageFacilitatorUrl` so
+ *     facilitator-aware sellers see the buyer's preferred facilitator
+ *     directly on the requirement (the same hint is also sent as the
+ *     `X-Swarmwage-Facilitator` request header by the transport).
  *
  * Throws `SellerMismatchError` BEFORE any signature is created, so funds
  * remain safe.
@@ -370,6 +406,7 @@ function isZeroHash(h: string | undefined | null): boolean {
 function makeAntiHijackSelector(
   expectedSellerId: AgentId,
   network: SwarmwageNetwork,
+  facilitatorUrl: string | null,
 ): PaymentRequirementsSelector {
   const expected = expectedSellerId.toLowerCase();
   return (paymentRequirements, _network, scheme) => {
@@ -383,6 +420,16 @@ function makeAntiHijackSelector(
     const actual = (selected.payTo ?? "").toLowerCase();
     if (actual !== expected) {
       throw new SellerMismatchError(expected, actual || "(missing)");
+    }
+    if (facilitatorUrl) {
+      // `extra` is an opaque Record<string, any> in the x402 spec; safe to
+      // annotate. The EIP-3009 authorization signed downstream covers
+      // (from, to, value, validAfter, validBefore, nonce) only — adding
+      // this hint does not invalidate the signature.
+      selected.extra = {
+        ...(selected.extra ?? {}),
+        swarmwageFacilitatorUrl: facilitatorUrl,
+      };
     }
     return selected;
   };

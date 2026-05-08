@@ -16,6 +16,12 @@ export {
 } from "./budget.js";
 export { verify, registerVerifier, getVerifier, type Verifier } from "./verification.js";
 export { createTelemetry, DEFAULT_TELEMETRY_URL } from "./telemetry.js";
+export {
+  resolveFacilitatorUrl,
+  SWARMWAGE_FACILITATOR_URL,
+  SWARMWAGE_FACILITATOR_HEADER,
+  type FacilitatorResolverInput,
+} from "./facilitator.js";
 
 export {
   PROTOCOL_VERSION,

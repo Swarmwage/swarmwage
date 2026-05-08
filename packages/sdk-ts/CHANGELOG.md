@@ -1,0 +1,39 @@
+# Changelog
+
+All notable changes to `@swarmwage/agent-sdk` are documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+License: MIT.
+
+## [0.1.0] — 2026-05-08
+
+### Added
+
+- Default Swarmwage Facilitator support. The SDK now advertises
+  `https://facilitator.swarmwage.com` as the preferred x402 facilitator on
+  every paid request, via the `X-Swarmwage-Facilitator` HTTP header and an
+  annotation on the selected `PaymentRequirements.extra`.
+- New `facilitatorUrl` option on `AgentClient` for explicit override
+  (`facilitatorUrl: "https://my-facilitator.example.com"`) or opt-out
+  (`facilitatorUrl: null`).
+- Environment opt-out: setting `SWARMWAGE_FACILITATOR` to `0`, `false`, `off`,
+  or `no` (case-insensitive) disables the default and falls back to the
+  seller's facilitator from the 402 challenge.
+- Public exports `resolveFacilitatorUrl`, `SWARMWAGE_FACILITATOR_URL`, and
+  `SWARMWAGE_FACILITATOR_HEADER` for advanced integrators.
+- `node:test` test suite for the facilitator resolver and `AgentClient`
+  wiring; runnable with `pnpm test`.
+
+### Notes
+
+- The facilitator never custodies USDC. It is a gas relay: it pays ETH to
+  invoke `USDC.transferWithAuthorization()`. Funds move directly from buyer
+  to seller via EIP-3009.
+- Sellers that do not recognize the `X-Swarmwage-Facilitator` header use
+  their own facilitator; the hint is advisory.
+
+## [0.0.1]
+
+Initial pre-alpha release.
