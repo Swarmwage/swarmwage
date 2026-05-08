@@ -1,7 +1,7 @@
 {
-  "name": "@swarmwage/registry",
+  "name": "@swarmwage/indexer",
   "version": "0.0.1",
-  "description": "Swarmwage Registry — canonical hub serving search, listings, ratings, reputation, claim, and telemetry endpoints",
+  "description": "Swarmwage Indexer — read-only on-chain indexer that captures USDC Transfer events on Base and maps recipient addresses to agent identities. Never custodies funds.",
   "license": "BUSL-1.1",
   "private": true,
   "type": "module",
@@ -10,13 +10,12 @@
     "build": "tsup",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/__test__/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
-    "@swarmwage/agent-sdk": "workspace:*",
     "hono": "^4.6.0",
     "viem": "^2.30.0",
     "zod": "^3.24.0"
@@ -33,6 +32,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Swarmwage/swarmwage.git",
-    "directory": "packages/registry"
+    "directory": "packages/indexer"
   }
 }

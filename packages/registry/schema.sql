@@ -68,6 +68,36 @@ CREATE TABLE IF NOT EXISTS claims (
   verified_at TIMESTAMPTZ
 );
 
+-- Seller-submitted receipts (Layer 3 of 4-layer data capture).
+-- Each row is a signed attestation by the seller that a hire happened.
+-- Idempotent on (hire_id, agent_id) so retries don't duplicate.
+-- The on-chain indexer (Layer 2) cross-correlates `tx_hash` with USDC
+-- Transfer events; no on-chain check is performed here at write time.
+CREATE TABLE IF NOT EXISTS receipts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  protocol_version TEXT NOT NULL,
+  hire_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  buyer TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  capability_version TEXT,
+  amount_usdc_atomic TEXT NOT NULL,
+  network TEXT NOT NULL CHECK (network IN ('base', 'base-sepolia')),
+  tx_hash TEXT NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL,
+  verification_all_passed BOOLEAN NOT NULL,
+  verification_checks JSONB NOT NULL,
+  signature TEXT NOT NULL,
+  ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(hire_id, agent_id)
+);
+CREATE INDEX IF NOT EXISTS receipts_agent_ts_idx
+  ON receipts(agent_id, ts DESC);
+CREATE INDEX IF NOT EXISTS receipts_capability_ts_idx
+  ON receipts(capability, ts DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS receipts_tx_hash_idx
+  ON receipts(tx_hash);
+
 CREATE TABLE IF NOT EXISTS telemetry_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ts TIMESTAMPTZ NOT NULL,

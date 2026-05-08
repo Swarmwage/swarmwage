@@ -26,6 +26,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { paymentMiddleware, type Network } from "x402-hono";
 import {
   PROTOCOL_VERSION,
+  submitReceipt,
   type AgentId,
   type Hex,
   type Listing,
@@ -319,6 +320,42 @@ app.post("/hire", async (c) => {
     }
   }
 
+  const verification = {
+    checks: [
+      { name: "is_valid_png", passed: true },
+      { name: "matches_dimensions", passed: true },
+      { name: "chart_type_match", passed: true },
+    ],
+    all_passed: true,
+  };
+
+  // Layer 3 data capture: submit a signed receipt to the canonical
+  // registry. Fire-and-forget — never blocks the buyer's response.
+  // Opt out with SWARMWAGE_RECEIPTS=0.
+  void submitReceipt({
+    registryUrl: REGISTRY_URL,
+    sellerPrivateKey: PRIVATE_KEY,
+    payload: {
+      protocol_version: PROTOCOL_VERSION,
+      hire_id: receiptId,
+      agent_id: agentId,
+      buyer:
+        (body.buyer_id?.toLowerCase() as AgentId) ??
+        ("0x0000000000000000000000000000000000000000" as AgentId),
+      capability: body.capability ?? "chart.generate.from-data",
+      amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
+      network: NETWORK as "base" | "base-sepolia",
+      tx_hash: txHash as `0x${string}`,
+      completed_at: new Date(completedAt * 1000).toISOString(),
+      verification: {
+        all_passed: verification.all_passed,
+        checks: Object.fromEntries(
+          verification.checks.map((c) => [c.name, c.passed]),
+        ),
+      },
+    },
+  });
+
   return c.json({
     protocol: PROTOCOL_VERSION,
     receipt: {
@@ -331,18 +368,19 @@ app.post("/hire", async (c) => {
       completed_at: completedAt,
     },
     result,
-    verification: {
-      checks: [
-        { name: "is_valid_png", passed: true },
-        { name: "matches_dimensions", passed: true },
-        { name: "chart_type_match", passed: true },
-      ],
-      all_passed: true,
-    },
+    verification,
     rating_token: ratingToken,
     _meta: { latency_ms: latency },
   });
 });
+
+// Convert "0.10" → "100000" (USDC has 6 decimals).
+function priceUsdcToAtomic(price: string): string {
+  const [intPart, fracPart = ""] = price.split(".");
+  const frac = (fracPart + "000000").slice(0, 6);
+  const combined = `${intPart}${frac}`.replace(/^0+(?=\d)/, "");
+  return combined === "" ? "0" : combined;
+}
 
 // -------------------------------------------------------------------------
 // Boot

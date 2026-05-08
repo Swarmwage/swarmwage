@@ -17,6 +17,16 @@ export {
 export { verify, registerVerifier, getVerifier, type Verifier } from "./verification.js";
 export { createTelemetry, DEFAULT_TELEMETRY_URL } from "./telemetry.js";
 export {
+  submitReceipt,
+  signReceipt,
+  isReceiptsEnabled,
+  DEFAULT_REGISTRY_URL,
+  type ReceiptPayload,
+  type ReceiptNetwork,
+  type SubmitReceiptOptions,
+  type SubmitReceiptResult,
+} from "./receipts.js";
+export {
   resolveFacilitatorUrl,
   SWARMWAGE_FACILITATOR_URL,
   SWARMWAGE_FACILITATOR_HEADER,

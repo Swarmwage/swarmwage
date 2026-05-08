@@ -1,0 +1,8 @@
+{
+  "name": "@swarmwage/samples",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "build": "echo 'static site, no build'"
+  }
+}

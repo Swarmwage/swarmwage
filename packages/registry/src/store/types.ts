@@ -50,6 +50,38 @@ export interface TelemetryRecord {
   event: Record<string, unknown>;
 }
 
+/**
+ * Seller-submitted receipt — Layer 3 of the 4-layer data capture model.
+ *
+ * The seller signs a canonical JSON of the payload (every field except
+ * `signature`, keys sorted) using the same scheme as listings, then POSTs
+ * to `/v1/receipts`. The registry verifies the signature recovers to
+ * `agent_id` (the seller) before persisting.
+ */
+export interface ReceiptRecord {
+  protocol_version: string;
+  /** Idempotency key: SDK-generated UUID per hire attempt. */
+  hire_id: string;
+  /** Seller (recipient of payment) — the signer. */
+  agent_id: AgentId;
+  /** Buyer address (informational). */
+  buyer: AgentId;
+  capability: CapabilityId;
+  capability_version?: string;
+  /** USDC amount in atomic units (6 decimals), as a string for BigInt safety. */
+  amount_usdc_atomic: string;
+  network: "base" | "base-sepolia";
+  tx_hash: `0x${string}`;
+  /** ISO 8601 timestamp when the seller observed completion. */
+  completed_at: string;
+  verification_all_passed: boolean;
+  verification_checks: Record<string, boolean>;
+  /** 0x-prefixed signature over the canonical payload (no `signature` key). */
+  signature: `0x${string}`;
+  /** Server-side received_at, populated by the store on append. */
+  ts?: number;
+}
+
 export interface RegistryStore {
   // Agents + claims
   upsertAgent(agentId: AgentId): Promise<void>;
@@ -65,6 +97,16 @@ export interface RegistryStore {
   // Hires (written by indexer in production; insertable here for tests)
   recordHire(hire: HireRecord): Promise<void>;
   getReputation(agentId: AgentId): Promise<Reputation | null>;
+
+  // Receipts (Layer 3 — seller-submitted)
+  /**
+   * Persist a verified receipt. Idempotent on (hire_id, agent_id):
+   * returns `{ inserted: true, id }` on first call, `{ inserted: false, id }`
+   * on duplicate.
+   */
+  appendReceipt(
+    receipt: ReceiptRecord,
+  ): Promise<{ inserted: boolean; id: string }>;
 
   // Ratings
   consumeRatingTokenAndStore(rating: RatingRecord): Promise<void>;

@@ -1,0 +1,17 @@
+{
+  "prompt": "Photorealistic cyberpunk hero standing on a rain-slicked rooftop in neon-lit Tokyo at night, mid-shot, three-quarter pose, weatherproof tactical jacket with reflective seams, cybernetic forearm with exposed circuitry glowing soft cyan, wet asphalt reflecting magenta and teal neon signage, distant skyline of holographic billboards through light fog, cinematic key light from above, subtle rim light from neon below, ultradetailed skin texture, 35mm full-frame look, shallow depth of field, atmospheric haze",
+  "negative_prompt": "blurry, deformed, extra fingers, extra limbs, watermark, text, logo, signature, low resolution, jpeg artifacts, oversaturated, cartoonish, anime style, plastic skin, flat lighting",
+  "style_hints": [
+    "cyberpunk",
+    "neon-noir",
+    "photorealistic",
+    "cinematic",
+    "rain",
+    "night",
+    "tokyo",
+    "shallow-depth-of-field",
+    "35mm"
+  ],
+  "aspect_ratio": "16:9",
+  "seed": 7421983
+}

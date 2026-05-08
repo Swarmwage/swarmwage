@@ -16,6 +16,7 @@ import type {
   ClaimChallenge,
   HireRecord,
   RatingRecord,
+  ReceiptRecord,
   RegistryStore,
   TelemetryRecord,
 } from "./types.js";
@@ -34,6 +35,7 @@ export class MemoryStore implements RegistryStore {
   private ratings: RatingRecord[] = [];
   private claims = new Map<string, ClaimChallenge>(); // key: verification_hash
   private telemetry: TelemetryRecord[] = [];
+  private receipts = new Map<string, { id: string; record: ReceiptRecord }>(); // key: `${hire_id}:${agent_id}`
 
   async upsertAgent(agentId: AgentId): Promise<void> {
     if (!this.agents.has(agentId)) {
@@ -225,6 +227,22 @@ export class MemoryStore implements RegistryStore {
 
   async isRatingTokenUsed(token: string): Promise<boolean> {
     return this.ratings.some((r) => r.rating_token === token);
+  }
+
+  async appendReceipt(
+    receipt: ReceiptRecord,
+  ): Promise<{ inserted: boolean; id: string }> {
+    const key = `${receipt.hire_id}:${receipt.agent_id.toLowerCase()}`;
+    const existing = this.receipts.get(key);
+    if (existing) {
+      return { inserted: false, id: existing.id };
+    }
+    const id = randomUUID();
+    this.receipts.set(key, {
+      id,
+      record: { ...receipt, ts: Date.now() },
+    });
+    return { inserted: true, id };
   }
 
   async recordTelemetry(event: TelemetryRecord): Promise<void> {
