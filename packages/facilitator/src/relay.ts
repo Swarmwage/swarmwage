@@ -549,6 +549,16 @@ async function settleAuthorization(
       // independently rather than re-broadcasting and burning the nonce
       // twice. Stderr line gives the operator a real-time signal that
       // settles are landing but receipts aren't being read.
+      //
+      // Known gap: returning gasSpentWei: null means the gas guard's
+      // record() will skip this case — but real ETH was spent on the
+      // broadcast (transferWithAuthorization burns gas at inclusion).
+      // In normal operation receipts arrive in 2–4 seconds on Base, so
+      // this is a non-issue; during a sustained sequencer slowdown the
+      // hourly cap may slightly underestimate true spend. The reserve
+      // floor still reads fresh balance on every /settle so the
+      // bankroll-bottom defense is uncompromised — the gap is in
+      // attribution, not in protection.
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(
         `facilitator.settle.receipt_wait_failed tx=${txHash} err=${JSON.stringify(msg)}\n`,

@@ -131,10 +131,18 @@ export function createSettleHandler({
     // IPs to bypass the per-IP limiter — they still hit one bucket keyed
     // by `auth.from`. Checked before relay.settleAuthorization because that
     // is the gas-spending broadcast.
-    const inner = paymentPayload.payload as
-      | { authorization?: { from?: string } }
-      | undefined;
-    const buyerAddress = inner?.authorization?.from?.toLowerCase();
+    //
+    // For `scheme=exact` on EVM networks the upstream x402 schema requires
+    // `payload.authorization.from` (it is a required `z.string()` inside
+    // a required `authorization` ZodObject), so this lookup cannot return
+    // null for a Zod-valid request. The `if (buyerAddress)` guard is
+    // defensive: it covers the SVM exact-payload shape (no `authorization`
+    // field) that is impossible on the Base/Base-Sepolia networks this
+    // facilitator supports but which the union still types as reachable.
+    // For SVM-shaped payloads the relay rejects with `invalid_payload`
+    // before any broadcast, so the per-IP limiter alone is sufficient.
+    const evmAuthForLimiter = extractEvmAuth(paymentPayload);
+    const buyerAddress = evmAuthForLimiter?.from.toLowerCase();
     if (buyerAddress) {
       const decision = addressLimiter.check(buyerAddress);
       if (!decision.allowed) {

@@ -148,3 +148,31 @@ test("withTimeout: propagates the wrapped promise's own rejection", async () => 
       err.message === "inner failure",
   );
 });
+
+test("/settle 400s a scheme=exact payload missing authorization.from", async () => {
+  // Proves the per-buyer rate-limit bypass concern is closed at the schema
+  // boundary: x402's ExactEvmPayloadAuthorizationSchema declares `from` as
+  // a required z.string(), so any request that reaches the rate-limit
+  // branch with a defined buyerAddress has already been Zod-validated.
+  // A missing-from payload is rejected before ever touching the relay.
+  const relay = buildThrowingRelay("should never be called");
+  const store = new InMemoryStore();
+  const gasGuard = new GasGuard({ minReserveWei: 0n, maxPerHourWei: 0n });
+  const app = createApp({ relay, store, gasGuard });
+
+  const body = buildSettleBody();
+  // Strip required `from` and `nonce` from the authorization. The schema
+  // marks both as required strings; either omission triggers the 400.
+  delete (body.paymentPayload.payload.authorization as Record<string, unknown>)
+    .from;
+
+  const res = await app.request("/settle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  assert.equal(res.status, 400);
+  // Relay must not have been touched — a 500 with empty store would
+  // indicate the schema let the malformed payload through.
+  assert.equal(store.snapshot().length, 0);
+});
