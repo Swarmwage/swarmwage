@@ -82,24 +82,41 @@ export function createSettleHandler({ relay, store, addressLimiter }: Deps) {
             .authorization)
         : null;
 
-    void store.appendLog({
-      ts: start,
-      route: "settle",
-      network: paymentPayload.network,
-      agent_id: null,
-      capability: null,
-      payer_address: evmAuth?.from ?? "",
-      recipient_address: evmAuth?.to ?? paymentRequirements.payTo,
-      amount_usdc_atomic:
-        evmAuth?.value ?? paymentRequirements.maxAmountRequired,
-      tx_hash: response.transaction || null,
-      gas_eth_spent_wei: gasSpentWei !== null ? gasSpentWei.toString() : null,
-      latency_ms: latency,
-      ok: response.success,
-      error: response.errorReason ?? null,
-      raw_request: raw,
-      raw_response: response satisfies SettleResponse,
-    });
+    // Block the response on the log write. The fire-and-forget pattern
+    // would silently drop entries on any Postgres error or coercion bug
+    // — exactly the failure mode that corrupts the 4-layer data capture
+    // story. Surfacing failures to stderr (via store.onError) AND logging
+    // a stderr line on .catch() ensures no silent loss; a slow DB shows
+    // up as request latency, not as a missing row.
+    try {
+      await store.appendLog({
+        ts: start,
+        route: "settle",
+        network: paymentPayload.network,
+        agent_id: null,
+        capability: null,
+        payer_address: evmAuth?.from ?? "",
+        recipient_address: evmAuth?.to ?? paymentRequirements.payTo,
+        amount_usdc_atomic:
+          evmAuth?.value ?? paymentRequirements.maxAmountRequired,
+        tx_hash: response.transaction || null,
+        gas_eth_spent_wei: gasSpentWei !== null ? gasSpentWei.toString() : null,
+        latency_ms: latency,
+        ok: response.success,
+        error: response.errorReason ?? null,
+        raw_request: raw,
+        raw_response: response satisfies SettleResponse,
+      });
+    } catch (err) {
+      // The store's onError already surfaces this once. We log a second
+      // line here so an operator grepping the route logs sees that this
+      // specific request did not produce a row, not just that some
+      // unspecified write failed somewhere.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.settle.log_write_error tx=${response.transaction || "none"} err=${msg}\n`,
+      );
+    }
 
     return c.json(response, 200);
   };

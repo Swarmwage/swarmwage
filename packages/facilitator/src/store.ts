@@ -62,6 +62,32 @@ export class InMemoryStore implements FacilitatorLogStore {
   }
 }
 
+/**
+ * Safe coercion of a user-supplied numeric string to BigInt. Accepts
+ * decimal (`"123"`) and 0x-prefixed hex (`"0x7b"`); returns 0n for any
+ * other shape so a malformed amount cannot crash a log write. Distinct
+ * from relay.ts's safeBigInt which returns null — here we always need a
+ * concrete BigInt to satisfy the schema, and 0n with `ok: false` already
+ * carried in the log row is a fine sentinel for a corrupted entry.
+ */
+function safeBigInt(value: string): bigint {
+  if (/^0x[0-9a-fA-F]+$/.test(value)) {
+    try {
+      return BigInt(value);
+    } catch {
+      return 0n;
+    }
+  }
+  if (/^\d+$/.test(value)) {
+    try {
+      return BigInt(value);
+    } catch {
+      return 0n;
+    }
+  }
+  return 0n;
+}
+
 // ---------------------------------------------------------------------------
 // PostgresStore
 // ---------------------------------------------------------------------------
@@ -111,6 +137,20 @@ export class PostgresStore implements FacilitatorLogStore {
   }
 
   async appendLog(entry: FacilitatorLogEntry): Promise<void> {
+    // Coerce user-controlled string amounts to BigInt safely. The buyer
+    // can put anything into `auth.value` (or the seller into
+    // `paymentRequirements.maxAmountRequired`); a non-numeric string would
+    // make the bare `BigInt(...)` constructor throw a SyntaxError before
+    // the SQL is even queued. Without the coercion, the throw would escape
+    // appendLog and — under the previous fire-and-forget call sites — get
+    // silently swallowed, leaving a hole in the logs that downstream
+    // analytics would never notice.
+    const amountAtomic = safeBigInt(entry.amount_usdc_atomic);
+    const gasWei =
+      entry.gas_eth_spent_wei !== null
+        ? safeBigInt(entry.gas_eth_spent_wei)
+        : null;
+
     try {
       await this.sql`
         INSERT INTO facilitator_logs (
@@ -126,9 +166,9 @@ export class PostgresStore implements FacilitatorLogStore {
           ${entry.capability},
           ${entry.payer_address},
           ${entry.recipient_address},
-          ${BigInt(entry.amount_usdc_atomic)},
+          ${amountAtomic},
           ${entry.tx_hash},
-          ${entry.gas_eth_spent_wei !== null ? BigInt(entry.gas_eth_spent_wei) : null},
+          ${gasWei},
           ${entry.latency_ms},
           ${entry.ok},
           ${entry.error},
