@@ -557,3 +557,17 @@ function verifyReasonToSettleReason(
   // is already a valid settle errorReason. The cast is a structural no-op.
   return reason as SettleResponse["errorReason"];
 }
+
+// ---------------------------------------------------------------------------
+// Test-only exports
+// ---------------------------------------------------------------------------
+//
+// The internal settle/verify functions are exposed here for unit tests that
+// need to inject mocked viem clients (publicClient / walletClient). Not
+// part of the public API; do NOT import this from anywhere except
+// `src/__test__/`.
+export const __test__ = {
+  settleAuthorization,
+  verifyAuthorization,
+  inFlightKey,
+};
