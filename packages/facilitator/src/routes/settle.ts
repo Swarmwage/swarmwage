@@ -7,8 +7,76 @@ import type { GasGuard } from "../gas-guard.js";
 import type { SlidingWindowLimiter } from "../rate-limit.js";
 import type { Relay } from "../relay.js";
 import type { FacilitatorLogStore } from "../store.js";
-import type { SettleResponse } from "../types.js";
+import type { PaymentPayload, SettleResponse } from "../types.js";
 import { FacilitatorRequestBodySchema } from "../types.js";
+
+// Outer ceiling on the entire settleAuthorization call. The inner viem
+// waitForTransactionReceipt has its own 30s timeout (relay.ts), so this
+// covers the catastrophic case where verification or broadcast itself
+// hangs (RPC partition, deadlock in a future relay refactor). A 60s
+// total ceiling keeps Hono from holding a connection open indefinitely.
+const SETTLE_TOTAL_TIMEOUT_MS = 60_000;
+
+class SettleTimeoutError extends Error {
+  constructor() {
+    super("settle total timeout");
+    this.name = "SettleTimeoutError";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SettleTimeoutError()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+// Test-only handle on the timeout primitives. Not part of the public API;
+// imported only from `src/__test__/`. Exposed here so the unit test can
+// exercise the timer behaviour against a tight clock instead of waiting
+// the production 60s ceiling.
+export const __test__ = {
+  withTimeout,
+  SettleTimeoutError,
+};
+
+interface EvmAuthFields {
+  from: string;
+  to: string;
+  value: string;
+}
+
+/**
+ * Narrow `paymentPayload.payload` to the EVM `transferWithAuthorization`
+ * shape and return its three log-relevant fields. Returns null when the
+ * payload is not the expected EVM exact-scheme shape — for `scheme=exact`
+ * on EVM that should be impossible after Zod validation, so callers must
+ * treat null as a divergence signal (logged, not silently absorbed).
+ */
+function extractEvmAuth(payload: PaymentPayload): EvmAuthFields | null {
+  const inner = payload.payload as
+    | { authorization?: { from?: unknown; to?: unknown; value?: unknown } }
+    | undefined;
+  const auth = inner?.authorization;
+  if (
+    !auth ||
+    typeof auth.from !== "string" ||
+    typeof auth.to !== "string" ||
+    typeof auth.value !== "string"
+  ) {
+    return null;
+  }
+  return { from: auth.from, to: auth.to, value: auth.value };
+}
 
 interface Deps {
   relay: Relay;
@@ -149,10 +217,84 @@ export function createSettleHandler({
       );
     }
 
-    const { response, gasSpentWei } = await relay.settleAuthorization(
-      paymentPayload,
-      paymentRequirements,
-    );
+    // Settlement: outer try/catch + total-time ceiling. Two failure modes
+    // we explicitly defend against here:
+    //   (a) a future bug in the relay that lets a throw escape its
+    //       internal try/catches — without this wrap it would propagate
+    //       to Hono's default error handler, return 500, and never write
+    //       a log row;
+    //   (b) a catastrophic hang — viem's polling has no built-in ceiling
+    //       outside the receipt wait, so a partition during an RPC read
+    //       in verifyAuthorization could pin a Hono connection.
+    // Either way: we log a structured stderr line, write a best-effort
+    // log row marking the failure, and return a controlled response.
+    let response: SettleResponse;
+    let gasSpentWei: bigint | null = null;
+    try {
+      const result = await withTimeout(
+        relay.settleAuthorization(paymentPayload, paymentRequirements),
+        SETTLE_TOTAL_TIMEOUT_MS,
+      );
+      response = result.response;
+      gasSpentWei = result.gasSpentWei;
+    } catch (err) {
+      const isTimeout = err instanceof SettleTimeoutError;
+      const failureReason = isTimeout
+        ? "settle_timeout"
+        : "settle_unexpected_error";
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.${failureReason} latency_ms=${Date.now() - start} err=${JSON.stringify(msg)}\n`,
+      );
+
+      // Best-effort audit row. The relay never returned, so we have no
+      // tx hash and no gas reading; pull addresses from the parsed
+      // request instead. If even the log write fails we drop a second
+      // stderr line and let the response carry on — chain state is the
+      // source of truth, the row is for our analytics.
+      const evmAuth = extractEvmAuth(paymentPayload);
+      try {
+        await store.appendLog({
+          ts: start,
+          route: "settle",
+          network: paymentPayload.network,
+          agent_id: null,
+          capability: null,
+          payer_address: evmAuth?.from ?? "",
+          recipient_address:
+            evmAuth?.to ?? paymentRequirements.payTo,
+          amount_usdc_atomic:
+            evmAuth?.value ?? paymentRequirements.maxAmountRequired,
+          tx_hash: null,
+          gas_eth_spent_wei: null,
+          latency_ms: Date.now() - start,
+          ok: false,
+          error: failureReason,
+          raw_request: raw,
+          raw_response: { error: msg, reason: failureReason },
+        });
+      } catch (logErr) {
+        const logMsg =
+          logErr instanceof Error ? logErr.message : String(logErr);
+        process.stderr.write(
+          `facilitator.settle.log_write_error reason=${failureReason} err=${JSON.stringify(logMsg)}\n`,
+        );
+      }
+
+      if (isTimeout) {
+        return c.json(
+          {
+            error:
+              "Facilitator settle timed out; the transaction may still confirm on-chain",
+          },
+          504,
+        );
+      }
+      return c.json(
+        { error: "Facilitator settle encountered an unexpected error" },
+        500,
+      );
+    }
 
     // Record gas burn — both on success and on on-chain revert. Skipped
     // when the relay reports null (e.g. the broadcast failed before
@@ -163,11 +305,20 @@ export function createSettleHandler({
     }
 
     const latency = Date.now() - start;
-    const evmAuth =
-      "authorization" in (paymentPayload.payload as Record<string, unknown>)
-        ? ((paymentPayload.payload as { authorization: { from: string; to: string; value: string } })
-            .authorization)
-        : null;
+    const evmAuth = extractEvmAuth(paymentPayload);
+    if (paymentPayload.scheme === "exact" && !evmAuth) {
+      // For scheme=exact the EVM authorization payload MUST be present —
+      // upstream Zod validation should already reject the malformed shape.
+      // Reaching this point with no auth means the schema admitted an
+      // invalid payload OR the relay returned success on a shape we did
+      // not expect. Either way it is a developer-level divergence, not a
+      // user error; the row will land with empty payer/recipient as a
+      // sentinel and this stderr line gives analytics the signal to
+      // hunt the upstream parsing bug.
+      process.stderr.write(
+        `facilitator.settle.evm_auth_missing scheme=exact network=${paymentPayload.network}\n`,
+      );
+    }
 
     // Block the response on the log write. The fire-and-forget pattern
     // would silently drop entries on any Postgres error or coercion bug

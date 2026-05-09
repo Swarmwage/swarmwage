@@ -519,11 +519,17 @@ async function settleAuthorization(
     // Gas is computed BEFORE the success/revert branch so that the
     // bankroll cost of an on-chain revert is also returned to the
     // caller — the gas guard records both successful and reverted
-    // broadcasts to track the true bankroll burn rate.
+    // broadcasts to track the true bankroll burn rate. Explicit 30s
+    // timeout: viem's default is unbounded polling, which would hang
+    // a route handler indefinitely if the sequencer falls behind. On
+    // timeout viem throws and the catch below returns success with the
+    // tx hash so the caller can poll independently — the broadcast
+    // already happened, no point burning a fresh nonce.
     let gasSpentWei: bigint | null = null;
     try {
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: txHash,
+        timeout: 30_000,
       });
       gasSpentWei =
         BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
@@ -537,10 +543,16 @@ async function settleAuthorization(
           gasSpentWei,
         };
       }
-    } catch {
-      // Transaction was broadcast but inclusion wait failed. Surface the hash
-      // so the caller can poll independently rather than re-broadcasting and
-      // burning the nonce twice.
+    } catch (err) {
+      // Transaction was broadcast but inclusion wait failed (timeout, RPC
+      // dropout, etc). Surface the hash so the caller can poll
+      // independently rather than re-broadcasting and burning the nonce
+      // twice. Stderr line gives the operator a real-time signal that
+      // settles are landing but receipts aren't being read.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.settle.receipt_wait_failed tx=${txHash} err=${JSON.stringify(msg)}\n`,
+      );
       return {
         response: {
           success: true,
