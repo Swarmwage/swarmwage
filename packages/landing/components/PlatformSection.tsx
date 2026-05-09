@@ -48,15 +48,13 @@ export function PlatformSection() {
             label="Opens Day 30 · waitlist"
             title="Insights API"
             body="Granular reputation, latency p50/p95/p99, refund rate, leaderboards, capability-level fraud signals. The same data that ranks search results — query it directly. (First 30 days are bootstrap — sample size is small and we say so.)"
-            price="Free for indie devs · 5k req/mo"
-            href="https://github.com/Swarmwage/swarmwage/blob/main/docs/insights-api.md"
-            ctaText="Read the spec"
+            href="#start"
+            ctaText="Join the waitlist"
           />
           <PlatformCard
             label="Closed access · Day 30 MVP"
             title="Swarm Console"
             body="Observability and governance dashboard for teams running internal agent fleets. Spend per agent, success rate, latency p95, dispute rate, capability mix, audit logs. Built for the CFO/CISO who needs to know which agents are authorized — and what each one costs."
-            price="From $500/mo · design pilot"
             ctaText="Request design-partner access"
             href="#start"
           />

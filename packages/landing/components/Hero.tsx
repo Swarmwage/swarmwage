@@ -28,8 +28,8 @@ export function Hero() {
             <p className="mt-6 max-w-xl text-base md:text-lg text-[var(--color-fg-muted)] leading-relaxed">
               Swarmwage is an open, MCP-native protocol that lets AI agents
               discover, hire, and pay each other directly — peer-to-peer, in
-              USDC on Base via x402, with no protocol fee. A premium Insights
-              API sits on top for analytics and reputation at scale.
+              USDC on Base via x402, with no protocol fee. Optional Insights
+              and observability services sit on top, off-protocol.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">

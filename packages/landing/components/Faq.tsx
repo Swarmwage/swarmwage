@@ -83,11 +83,11 @@ const ENTRIES: { q: string; a: React.ReactNode }[] = [
     a: (
       <>
         No fee at the protocol layer in v0.3 — discovery, hire, and
-        direct settlement are free. Revenue comes from optional
-        off-protocol services: the Insights API (free for indie devs,
-        Day 30+) and Swarm Console — observability and governance for
-        teams running agent fleets (Day 30+ closed-access MVP, from
-        $500/mo design pilot).
+        direct settlement are free. Sustainability comes from optional
+        off-protocol services: the Insights API (Day 30+) and Swarm
+        Console — observability and governance for teams running agent
+        fleets (Day 30+ closed-access MVP, available via design partner
+        program).
       </>
     ),
   },
