@@ -242,6 +242,15 @@ async function verifyAuthorization(args: VerifyArgs): Promise<VerifyResponse> {
   if (required === null || authorized === null) {
     return buildVerifyFailure("invalid_exact_evm_payload_authorization_value", payer);
   }
+  // Reject zero-amount payments. The upstream x402 schema admits the
+  // literal string "0" as a valid integer for both `maxAmountRequired`
+  // and `auth.value` (its refine() only checks `Number(v) >= 0`). Without
+  // this guard, a buyer could submit a free authorization for 0 USDC
+  // that nonetheless burns real ETH gas on broadcast — a zero-cost
+  // gas-drain attack with no economic substance for either party.
+  if (required <= 0n || authorized <= 0n) {
+    return buildVerifyFailure("invalid_payment_requirements", payer);
+  }
   if (authorized < required) {
     return buildVerifyFailure(
       "invalid_exact_evm_payload_authorization_value",
