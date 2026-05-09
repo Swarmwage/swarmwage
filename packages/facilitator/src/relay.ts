@@ -504,11 +504,17 @@ async function settleAuthorization(
     }
 
     // Wait for inclusion to confirm settlement and capture gas spent.
+    // Gas is computed BEFORE the success/revert branch so that the
+    // bankroll cost of an on-chain revert is also returned to the
+    // caller — the gas guard records both successful and reverted
+    // broadcasts to track the true bankroll burn rate.
     let gasSpentWei: bigint | null = null;
     try {
       const receipt = await publicClient.waitForTransactionReceipt({
         hash: txHash,
       });
+      gasSpentWei =
+        BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
       if (receipt.status !== "success") {
         return {
           response: buildSettleFailure(
@@ -516,11 +522,9 @@ async function settleAuthorization(
             "unexpected_settle_error",
             auth.from,
           ),
-          gasSpentWei: null,
+          gasSpentWei,
         };
       }
-      gasSpentWei =
-        BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
     } catch {
       // Transaction was broadcast but inclusion wait failed. Surface the hash
       // so the caller can poll independently rather than re-broadcasting and

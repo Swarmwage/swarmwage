@@ -13,6 +13,7 @@ import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 
 import { loadEnv } from "./env.js";
+import { GasGuard } from "./gas-guard.js";
 import {
   clientIp,
   rateLimit,
@@ -52,6 +53,13 @@ export interface FacilitatorAppDeps {
    * decoded.
    */
   settleAddressLimiter?: SlidingWindowLimiter;
+  /**
+   * Optional override for the bankroll kill-switch. Tests can inject a
+   * tight cap to exercise the 503 path. When omitted, the app builds a
+   * permissive guard (effectively no-op); the production boot path below
+   * wires real reserve and hourly cap values from env.
+   */
+  gasGuard?: GasGuard;
 }
 
 export function createApp(deps: FacilitatorAppDeps) {
@@ -65,6 +73,12 @@ export function createApp(deps: FacilitatorAppDeps) {
   const settleAddressLimiter =
     deps.settleAddressLimiter ??
     new SlidingWindowLimiter({ limit: 5, windowMs: 60_000 });
+  // Default guard is permissive: no-op when callers (e.g. unit tests)
+  // omit the gasGuard dependency. The production boot below wires a
+  // GasGuard with the operator-configured reserve floor and hourly cap.
+  const gasGuard =
+    deps.gasGuard ??
+    new GasGuard({ minReserveWei: 0n, maxPerHourWei: 0n });
   const app = new Hono();
 
   app.use("*", honoLogger());
@@ -139,7 +153,12 @@ export function createApp(deps: FacilitatorAppDeps) {
   app.post(
     "/settle",
     rateLimit(settleIpLimiter, clientIp),
-    createSettleHandler({ relay, store, addressLimiter: settleAddressLimiter }),
+    createSettleHandler({
+      relay,
+      store,
+      addressLimiter: settleAddressLimiter,
+      gasGuard,
+    }),
   );
 
   return app;
@@ -171,10 +190,14 @@ if (isEntry) {
       })
     : new InMemoryStore();
   const storeKind = env.databaseUrl ? "postgres" : "memory";
-  app = createApp({ relay, store });
+  const gasGuard = new GasGuard({
+    minReserveWei: env.minGasReserveWei,
+    maxPerHourWei: env.maxGasPerHourWei,
+  });
+  app = createApp({ relay, store, gasGuard });
   serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
-      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind})\n`,
+      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind}, min_reserve_wei=${env.minGasReserveWei}, max_gas_per_hour_wei=${env.maxGasPerHourWei})\n`,
     );
   });
 }

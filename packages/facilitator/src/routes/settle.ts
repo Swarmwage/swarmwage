@@ -3,6 +3,7 @@
 
 import type { Context } from "hono";
 
+import type { GasGuard } from "../gas-guard.js";
 import type { SlidingWindowLimiter } from "../rate-limit.js";
 import type { Relay } from "../relay.js";
 import type { FacilitatorLogStore } from "../store.js";
@@ -19,9 +20,23 @@ interface Deps {
    * One buyer rotating IPs still hits a single bucket here.
    */
   addressLimiter: SlidingWindowLimiter;
+  /**
+   * Bankroll kill-switch. Two checks: (a) the trailing-hour gas spend
+   * must be below the configured cap; (b) the gas wallet balance must
+   * be above the configured reserve floor. Both run before the
+   * gas-spending broadcast and short-circuit with 503 on breach. The
+   * guard's `record()` is invoked after the broadcast — both on success
+   * and on on-chain revert — so the cap reflects true bankroll burn.
+   */
+  gasGuard: GasGuard;
 }
 
-export function createSettleHandler({ relay, store, addressLimiter }: Deps) {
+export function createSettleHandler({
+  relay,
+  store,
+  addressLimiter,
+  gasGuard,
+}: Deps) {
   return async function settle(c: Context): Promise<Response> {
     const start = Date.now();
     let raw: unknown;
@@ -70,10 +85,68 @@ export function createSettleHandler({ relay, store, addressLimiter }: Deps) {
       }
     }
 
+    // Bankroll kill-switch — hourly spend cap. Sync, no RPC. Short-circuit
+    // here so an exhausted bankroll does not pay for an on-chain balance
+    // read it cannot act on. Reported as 503 (service-level breach) rather
+    // than 429 (per-caller throttle) because the cap is global to this
+    // process and not addressable by the caller backing off.
+    const hourly = gasGuard.hourlyAllowance();
+    if (!hourly.allowed) {
+      c.header("Retry-After", String(hourly.retryAfterSec));
+      return c.json(
+        {
+          error: "Facilitator gas budget exhausted; service paused",
+          retry_after_seconds: hourly.retryAfterSec,
+        },
+        503,
+      );
+    }
+
+    // Bankroll kill-switch — reserve floor. Reads the gas wallet balance
+    // and refuses if it has fallen below the configured minimum. Catches
+    // the "many distinct buyer addresses, each within rate limit" drain
+    // pattern that the hourly cap would absorb but ultimately allow.
+    let gasBalanceWei: bigint;
+    try {
+      gasBalanceWei = await relay.gasBalance();
+    } catch {
+      // RPC unreachable. Fail closed: better to refuse than to broadcast
+      // blind. Suggest a short retry; the operator's monitoring layer
+      // surfaces the underlying RPC failure.
+      c.header("Retry-After", "30");
+      return c.json(
+        {
+          error: "Facilitator gas balance check failed; service paused",
+          retry_after_seconds: 30,
+        },
+        503,
+      );
+    }
+    const reserve = gasGuard.reserveCheck(gasBalanceWei);
+    if (!reserve.allowed) {
+      // No retry-after suggestion — the operator must top-up the wallet,
+      // and there is no machine-readable signal for "when". Buyers should
+      // exponentially back off.
+      return c.json(
+        {
+          error: "Facilitator gas reserve below floor; service paused",
+        },
+        503,
+      );
+    }
+
     const { response, gasSpentWei } = await relay.settleAuthorization(
       paymentPayload,
       paymentRequirements,
     );
+
+    // Record gas burn — both on success and on on-chain revert. Skipped
+    // when the relay reports null (e.g. the broadcast failed before
+    // reaching the network, in which case no ETH was spent). The guard's
+    // record() is sync and idempotent w.r.t. zero/negative values.
+    if (gasSpentWei !== null) {
+      gasGuard.record(gasSpentWei);
+    }
 
     const latency = Date.now() - start;
     const evmAuth =
