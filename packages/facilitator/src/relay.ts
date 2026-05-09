@@ -92,6 +92,15 @@ export function createRelay(env: FacilitatorEnv): Relay {
 
   const network = env.network;
 
+  // Per-relay set of in-flight `(from, nonce)` pairs currently being
+  // broadcast. The check-and-add at settle time is sync (no await between
+  // `has` and `add`), so under Node's single-threaded model two concurrent
+  // /settle calls for the same authorization cannot both reach
+  // writeContract — the second one returns invalid_transaction_state
+  // without burning gas on a guaranteed on-chain revert. The slot is
+  // released in finally{} after waitForTransactionReceipt resolves.
+  const inFlightNonces = new Set<string>();
+
   return {
     network,
     chainId: chain.id,
@@ -122,6 +131,7 @@ export function createRelay(env: FacilitatorEnv): Relay {
         publicClient,
         walletClient,
         account,
+        inFlightNonces,
       });
     },
   };
@@ -355,13 +365,25 @@ interface SettleArgs {
   publicClient: PublicClientLike;
   walletClient: WalletClientLike;
   account: Account;
+  inFlightNonces: Set<string>;
+}
+
+function inFlightKey(from: string, nonce: string): string {
+  return `${from.toLowerCase()}:${nonce.toLowerCase()}`;
 }
 
 async function settleAuthorization(
   args: SettleArgs,
 ): Promise<{ response: SettleResponse; gasSpentWei: bigint | null }> {
-  const { payload, requirements, network, publicClient, walletClient, account } =
-    args;
+  const {
+    payload,
+    requirements,
+    network,
+    publicClient,
+    walletClient,
+    account,
+    inFlightNonces,
+  } = args;
 
   // Re-run verification before broadcasting. Cheap insurance against a
   // /verify being skipped or stale state being acted on.
@@ -391,46 +413,62 @@ async function settleAuthorization(
     };
   }
   const auth = evm.authorization;
-  const { v, r, s } = splitSignature(evm.signature);
 
-  let txHash: Hex;
-  try {
-    txHash = await walletClient.writeContract({
-      account,
-      chain: CHAIN_BY_NETWORK[network],
-      address: USDC_ADDRESS[network],
-      abi: USDC_ABI,
-      functionName: "transferWithAuthorization",
-      args: [
-        auth.from as Address,
-        auth.to as Address,
-        BigInt(auth.value),
-        BigInt(auth.validAfter),
-        BigInt(auth.validBefore),
-        auth.nonce as Hex,
-        v,
-        r,
-        s,
-      ],
-    });
-  } catch {
+  // Claim the in-flight slot for this (from, nonce). The has-then-add
+  // sequence is sync — no await between the two calls — so under Node's
+  // single-threaded execution model two concurrent settles for the same
+  // authorization cannot both pass this gate. The second returns
+  // invalid_transaction_state without ever calling writeContract, which
+  // is the entire point: a guaranteed on-chain revert burns gas, and
+  // `authorizationState` is too eventually-consistent to catch the
+  // duplicate before broadcast.
+  const key = inFlightKey(auth.from, auth.nonce);
+  if (inFlightNonces.has(key)) {
     return {
       response: buildSettleFailure(
         network,
-        "unexpected_settle_error",
+        "invalid_transaction_state",
         auth.from,
       ),
       gasSpentWei: null,
     };
   }
+  inFlightNonces.add(key);
 
-  // Wait for inclusion to confirm settlement and capture gas spent.
-  let gasSpentWei: bigint | null = null;
   try {
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: txHash,
-    });
-    if (receipt.status !== "success") {
+    let v: number;
+    let r: Hex;
+    let s: Hex;
+    try {
+      ({ v, r, s } = splitSignature(evm.signature));
+    } catch {
+      return {
+        response: buildSettleFailure(network, "invalid_payload", auth.from),
+        gasSpentWei: null,
+      };
+    }
+
+    let txHash: Hex;
+    try {
+      txHash = await walletClient.writeContract({
+        account,
+        chain: CHAIN_BY_NETWORK[network],
+        address: USDC_ADDRESS[network],
+        abi: USDC_ABI,
+        functionName: "transferWithAuthorization",
+        args: [
+          auth.from as Address,
+          auth.to as Address,
+          BigInt(auth.value),
+          BigInt(auth.validAfter),
+          BigInt(auth.validBefore),
+          auth.nonce as Hex,
+          v,
+          r,
+          s,
+        ],
+      });
+    } catch {
       return {
         response: buildSettleFailure(
           network,
@@ -440,12 +478,40 @@ async function settleAuthorization(
         gasSpentWei: null,
       };
     }
-    gasSpentWei =
-      BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
-  } catch {
-    // Transaction was broadcast but inclusion wait failed. Surface the hash
-    // so the caller can poll independently rather than re-broadcasting and
-    // burning the nonce twice.
+
+    // Wait for inclusion to confirm settlement and capture gas spent.
+    let gasSpentWei: bigint | null = null;
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+      });
+      if (receipt.status !== "success") {
+        return {
+          response: buildSettleFailure(
+            network,
+            "unexpected_settle_error",
+            auth.from,
+          ),
+          gasSpentWei: null,
+        };
+      }
+      gasSpentWei =
+        BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
+    } catch {
+      // Transaction was broadcast but inclusion wait failed. Surface the hash
+      // so the caller can poll independently rather than re-broadcasting and
+      // burning the nonce twice.
+      return {
+        response: {
+          success: true,
+          network,
+          transaction: txHash,
+          payer: auth.from,
+        },
+        gasSpentWei: null,
+      };
+    }
+
     return {
       response: {
         success: true,
@@ -453,19 +519,11 @@ async function settleAuthorization(
         transaction: txHash,
         payer: auth.from,
       },
-      gasSpentWei: null,
+      gasSpentWei,
     };
+  } finally {
+    inFlightNonces.delete(key);
   }
-
-  return {
-    response: {
-      success: true,
-      network,
-      transaction: txHash,
-      payer: auth.from,
-    },
-    gasSpentWei,
-  };
 }
 
 function verifyReasonToSettleReason(
