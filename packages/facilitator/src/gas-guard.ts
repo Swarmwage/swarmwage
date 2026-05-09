@@ -45,6 +45,21 @@ export type HourlyDecision =
       retryAfterSec: number;
     };
 
+export interface GasGuardSnapshot {
+  /** Trailing-hour gas spend in wei. */
+  hourlyUsedWei: bigint;
+  /** Configured hourly cap in wei. 0n means the cap is disabled. */
+  hourlyCapWei: bigint;
+  /**
+   * Trailing-hour usage as a percentage of the cap, with two-decimal
+   * precision. Null when the cap is disabled (cap == 0n) so dashboards
+   * can render "—" instead of an undefined ratio.
+   */
+  hourlyUsedPct: number | null;
+  /** Configured reserve floor in wei. 0n means the floor is disabled. */
+  reserveWei: bigint;
+}
+
 interface SpendEvent {
   ts: number;
   gasWei: bigint;
@@ -141,6 +156,27 @@ export class GasGuard {
       if (ev.ts > cutoff) total += ev.gasWei;
     }
     return total;
+  }
+
+  /**
+   * Read-only view of the guard's current state. Intended for /health
+   * exposure and operator dashboards — surfaces the trailing-hour
+   * usage trend before the cap actually trips. Pure: does not mutate
+   * the guard.
+   */
+  snapshot(): GasGuardSnapshot {
+    const used = this.currentSpendWei();
+    const cap = this.maxPerHourWei;
+    const pct =
+      cap === 0n
+        ? null
+        : Number((used * 10_000n) / cap) / 100;
+    return {
+      hourlyUsedWei: used,
+      hourlyCapWei: cap,
+      hourlyUsedPct: pct,
+      reserveWei: this.minReserveWei,
+    };
   }
 
   /** Number of spend events currently tracked. Test-only. */

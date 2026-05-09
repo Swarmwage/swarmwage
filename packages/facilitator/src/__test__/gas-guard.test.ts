@@ -142,6 +142,30 @@ test("GasGuard.record: ignores zero and negative spends", () => {
   assert.equal(guard.currentSpendWei(), 0n);
 });
 
+test("GasGuard.snapshot: reports usage, cap, pct, and reserve", () => {
+  const guard = new GasGuard({
+    minReserveWei: ONE_FINNEY,
+    maxPerHourWei: 100n * ONE_GWEI,
+  });
+  guard.record(25n * ONE_GWEI); // 25% of cap
+  const snap = guard.snapshot();
+  assert.equal(snap.hourlyUsedWei, 25n * ONE_GWEI);
+  assert.equal(snap.hourlyCapWei, 100n * ONE_GWEI);
+  assert.equal(snap.hourlyUsedPct, 25);
+  assert.equal(snap.reserveWei, ONE_FINNEY);
+});
+
+test("GasGuard.snapshot: hourlyUsedPct is null when cap disabled", () => {
+  const guard = new GasGuard({
+    minReserveWei: 0n,
+    maxPerHourWei: 0n,
+  });
+  guard.record(10n ** 18n);
+  const snap = guard.snapshot();
+  assert.equal(snap.hourlyUsedPct, null);
+  assert.equal(snap.hourlyCapWei, 0n);
+});
+
 // ---------------------------------------------------------------------------
 // Integration tests — /settle 503 paths
 // ---------------------------------------------------------------------------

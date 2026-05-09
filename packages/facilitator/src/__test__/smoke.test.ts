@@ -73,6 +73,16 @@ test("GET /health returns gas wallet info", async () => {
   assert.equal(body.gas_wallet, relay.account.address);
   assert.equal(body.ok, true);
   assert.equal(body.eth_balance_wei, "0");
+  // Default app harness has no gas guard configured, so /health reports a
+  // permissive snapshot (caps disabled, reserve floor disabled, breach
+  // false because the floor is also zero).
+  const guard = body.gas_guard as Record<string, unknown>;
+  assert.ok(guard);
+  assert.equal(guard.hourly_used_wei, "0");
+  assert.equal(guard.hourly_cap_wei, "0");
+  assert.equal(guard.hourly_used_pct, null);
+  assert.equal(guard.reserve_wei, "0");
+  assert.equal(guard.reserve_breached, false);
 });
 
 test("GET /supported lists the active scheme + network", async () => {

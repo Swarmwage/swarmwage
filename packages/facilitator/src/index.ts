@@ -121,12 +121,29 @@ export function createApp(deps: FacilitatorAppDeps) {
       // 503 so load balancers drain this instance instead of routing traffic.
     }
     const ok = ethBalanceWei !== null;
+    const snap = gasGuard.snapshot();
+    // reserve_breached is null when we couldn't read the balance — undefined
+    // truth value rather than a false-negative. When the floor is disabled
+    // (reserveWei == 0n) the field is always false because no balance fails
+    // a non-existent floor.
+    const balanceBig = ethBalanceWei !== null ? BigInt(ethBalanceWei) : null;
+    const reserveBreached =
+      balanceBig === null
+        ? null
+        : snap.reserveWei > 0n && balanceBig < snap.reserveWei;
     return c.json(
       {
         ok,
         network: relay.network,
         gas_wallet: relay.account.address,
         eth_balance_wei: ethBalanceWei,
+        gas_guard: {
+          hourly_used_wei: snap.hourlyUsedWei.toString(),
+          hourly_cap_wei: snap.hourlyCapWei.toString(),
+          hourly_used_pct: snap.hourlyUsedPct,
+          reserve_wei: snap.reserveWei.toString(),
+          reserve_breached: reserveBreached,
+        },
       },
       ok ? 200 : 503,
     );

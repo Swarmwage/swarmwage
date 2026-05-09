@@ -92,6 +92,13 @@ export function createSettleHandler({
     // process and not addressable by the caller backing off.
     const hourly = gasGuard.hourlyAllowance();
     if (!hourly.allowed) {
+      // Structured stderr line — operators tail/grep `gas_guard.tripped` to
+      // catch the breach in real time, not by noticing the 503s in the
+      // route log hours later. Format is whitespace-separated key=value
+      // for trivial parsing by journalctl / awk / log shippers.
+      process.stderr.write(
+        `facilitator.gas_guard.tripped reason=hourly_cap spent_wei=${hourly.spentWei} cap_wei=${hourly.capWei} retry_after_sec=${hourly.retryAfterSec}\n`,
+      );
       c.header("Retry-After", String(hourly.retryAfterSec));
       return c.json(
         {
@@ -109,10 +116,14 @@ export function createSettleHandler({
     let gasBalanceWei: bigint;
     try {
       gasBalanceWei = await relay.gasBalance();
-    } catch {
+    } catch (err) {
       // RPC unreachable. Fail closed: better to refuse than to broadcast
       // blind. Suggest a short retry; the operator's monitoring layer
       // surfaces the underlying RPC failure.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.gas_guard.tripped reason=balance_rpc_error err=${JSON.stringify(msg)}\n`,
+      );
       c.header("Retry-After", "30");
       return c.json(
         {
@@ -124,6 +135,9 @@ export function createSettleHandler({
     }
     const reserve = gasGuard.reserveCheck(gasBalanceWei);
     if (!reserve.allowed) {
+      process.stderr.write(
+        `facilitator.gas_guard.tripped reason=reserve_floor balance_wei=${reserve.balanceWei} reserve_wei=${reserve.minReserveWei}\n`,
+      );
       // No retry-after suggestion — the operator must top-up the wallet,
       // and there is no machine-readable signal for "when". Buyers should
       // exponentially back off.

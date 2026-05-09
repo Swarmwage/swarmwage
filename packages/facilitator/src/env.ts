@@ -28,9 +28,11 @@ const WeiAmountSchema = z
 //
 // Reference for sizing: a typical USDC.transferWithAuthorization on
 // Base costs ~75–100k gas. At 0.1 gwei (Base typical) a single settle
-// burns ~10^13 wei. Defaults below allow ~100 settles before the
-// reserve floor trips and ~2,000 settles per hour before the cap.
-const DEFAULT_MIN_GAS_RESERVE_WEI = 1_000_000_000_000_000n; // 0.001 ETH
+// burns ~10^13 wei. The reserve default below leaves ~500 settles of
+// headroom above the floor — enough lead time for an operator to
+// receive a low-balance alert and top-up before the kill-switch trips.
+// The hourly cap allows ~2,000 settles before refusal.
+const DEFAULT_MIN_GAS_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 ETH
 const DEFAULT_MAX_GAS_PER_HOUR_WEI = 20_000_000_000_000_000n; // 0.02 ETH
 
 const EnvSchema = z.object({
