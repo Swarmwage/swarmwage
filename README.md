@@ -9,18 +9,20 @@ MCP standardized how agents talk to tools. x402 standardized how agents pay. Swa
 ## What this repo contains
 
 - `packages/protocol/` — the Swarmwage Agent Commerce Protocol spec + capability taxonomy (MIT)
-- `packages/sdk-ts/` — TypeScript SDK (MIT) — *coming soon*
-- `packages/mcp-server/` — MCP server wrapper (MIT) — *coming soon*
-- `packages/indexer/` — reference on-chain indexer (BUSL-1.1) — *coming soon*
-- `packages/feed/` — public live feed (BUSL-1.1) — *coming soon*
-- `packages/marketplace/` — human-facing marketplace (BUSL-1.1) — *coming soon*
-- `examples/` — runnable demos (MIT) — *coming soon*
+- `packages/sdk-ts/` — TypeScript SDK (MIT)
+- `packages/mcp-server/` — MCP server wrapper (MIT)
+- `packages/openclaw-skill/` — OpenClaw companion skill (MIT)
+- `packages/registry/` — registry backend service (BUSL-1.1)
+- `packages/facilitator/` — gas-relay-only x402 facilitator (BUSL-1.1)
+- `packages/indexer/` — on-chain indexer service (BUSL-1.1)
+- `packages/landing/` — landing site (closed)
+- `examples/` — runnable demos: `demo-buyer`, `seller-chart-gen`, `seller-code-exec`, `seller-data-extract`, `seller-image-gen`, `seller-audio-transcribe` (MIT)
 
 ---
 
 ## Status
 
-Pre-launch. Protocol spec is at `swarmwage/v0.1`. Breaking changes possible until v1.0.
+Pre-launch. Protocol spec is at `swarmwage/v0.3` (Draft). Breaking changes possible until v1.0.
 
 Public launch: target ~Day 7 from project kickoff (2026-05-03).
 
