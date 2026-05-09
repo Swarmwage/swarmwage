@@ -266,6 +266,21 @@ async function verifyAuthorization(args: VerifyArgs): Promise<VerifyResponse> {
     return buildVerifyFailure("payment_expired", payer);
   }
 
+  // Signature shape + low-S canonical check. Reject high-S now so that
+  // /verify and /settle agree: a payload that passes verify must also
+  // pass the splitSignature gate at settle time. viem's recoverTypedData
+  // normalizes high-S internally and would still recover the correct
+  // address, hiding the malleability — so we cannot rely on it for this
+  // check.
+  try {
+    splitSignature(evm.signature);
+  } catch {
+    return buildVerifyFailure(
+      "invalid_exact_evm_payload_signature",
+      payer,
+    );
+  }
+
   // EIP-712 signature recovery.
   const recovered = await recoverAuthorizationSigner(
     auth,

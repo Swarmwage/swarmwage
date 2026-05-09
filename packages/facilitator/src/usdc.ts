@@ -110,8 +110,31 @@ export const TRANSFER_WITH_AUTHORIZATION_TYPES = {
 } as const;
 
 /**
+ * Half the secp256k1 curve order. Per EIP-2 / BIP 62, only signatures with
+ * `s ≤ N/2` are canonical; the equally-valid form `(v ^ 1, r, N − s)`
+ * recovers the same address but produces a distinct 65-byte string. Most
+ * EVM tooling enforces low-S to prevent malleability-driven bypass of any
+ * downstream deduplication that keys on the signature bytes. We do too.
+ *
+ * N/2 for secp256k1 (Ethereum / Bitcoin):
+ *   0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
+ */
+const SECP256K1_N_OVER_2 = BigInt(
+  "0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0",
+);
+
+/**
  * Convert a 65-byte EVM signature to its (v, r, s) split as required by the
  * legacy `transferWithAuthorization(...,v,r,s)` overload.
+ *
+ * Throws on malformed length OR on a non-canonical (high-S) signature. The
+ * USDC contract on Base accepts both forms because it relies on EIP-3009's
+ * `nonce` field for replay protection rather than the signature bytes —
+ * but defence-in-depth: any caching, deduplication, or auditing layer we
+ * (or a downstream consumer) build that keys on the raw signature would
+ * be defeated by submitting the malleable variant. Rejecting at the
+ * facilitator boundary closes that whole class of bypass before it can
+ * be exploited.
  */
 export function splitSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
   const sig = signature.startsWith("0x") ? signature.slice(2) : signature;
@@ -126,5 +149,16 @@ export function splitSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
   // EIP-155 normalised values arrive as 27 / 28; any other value (e.g. 0/1
   // from a fresh ECDSA recovery) is bumped into the canonical range.
   if (v < 27) v += 27;
+
+  // Enforce low-S (EIP-2). Reject rather than silently normalize so that
+  // an attacker submitting the malleable form gets a hard failure visible
+  // in logs rather than a silent rewrite.
+  const sValue = BigInt(s);
+  if (sValue > SECP256K1_N_OVER_2) {
+    throw new Error(
+      "non-canonical signature: high-S value rejected (EIP-2 / BIP 62)",
+    );
+  }
+
   return { v, r, s };
 }
