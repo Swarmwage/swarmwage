@@ -13,6 +13,11 @@ import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 
 import { loadEnv } from "./env.js";
+import {
+  clientIp,
+  rateLimit,
+  SlidingWindowLimiter,
+} from "./rate-limit.js";
 import { createRelay } from "./relay.js";
 import { createSettleHandler } from "./routes/settle.js";
 import { createVerifyHandler } from "./routes/verify.js";
@@ -29,10 +34,37 @@ import {
 export interface FacilitatorAppDeps {
   relay: ReturnType<typeof createRelay>;
   store: FacilitatorLogStore;
+  /**
+   * Optional override for the per-IP /settle limiter. Tests pass a tight
+   * limiter to exercise the 429 path without flooding. Defaults to
+   * 20 requests / minute.
+   */
+  settleIpLimiter?: SlidingWindowLimiter;
+  /**
+   * Optional override for the per-IP /verify limiter. Verify is read-only
+   * (no gas spent), so the default ceiling is higher: 60 requests / minute.
+   */
+  verifyIpLimiter?: SlidingWindowLimiter;
+  /**
+   * Optional override for the per-buyer-address /settle limiter. Defaults
+   * to 5 requests / minute. Enforced inside the route handler after body
+   * parsing because the buyer address is only known once the payload is
+   * decoded.
+   */
+  settleAddressLimiter?: SlidingWindowLimiter;
 }
 
 export function createApp(deps: FacilitatorAppDeps) {
   const { relay, store } = deps;
+  const settleIpLimiter =
+    deps.settleIpLimiter ??
+    new SlidingWindowLimiter({ limit: 20, windowMs: 60_000 });
+  const verifyIpLimiter =
+    deps.verifyIpLimiter ??
+    new SlidingWindowLimiter({ limit: 60, windowMs: 60_000 });
+  const settleAddressLimiter =
+    deps.settleAddressLimiter ??
+    new SlidingWindowLimiter({ limit: 5, windowMs: 60_000 });
   const app = new Hono();
 
   app.use("*", honoLogger());
@@ -99,8 +131,16 @@ export function createApp(deps: FacilitatorAppDeps) {
     return c.json(body);
   });
 
-  app.post("/verify", createVerifyHandler({ relay, store }));
-  app.post("/settle", createSettleHandler({ relay, store }));
+  app.post(
+    "/verify",
+    rateLimit(verifyIpLimiter, clientIp),
+    createVerifyHandler({ relay, store }),
+  );
+  app.post(
+    "/settle",
+    rateLimit(settleIpLimiter, clientIp),
+    createSettleHandler({ relay, store, addressLimiter: settleAddressLimiter }),
+  );
 
   return app;
 }
