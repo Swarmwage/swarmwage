@@ -111,14 +111,42 @@ export function createApp(deps: FacilitatorAppDeps) {
     }),
   );
 
+  // 5-second TTL cache for the gas wallet balance read by /health. The
+  // endpoint is CORS-open by design (operators monitor it from arbitrary
+  // dashboards), so without a cache it is trivially RPC-amplifiable: a
+  // malicious browser can spam it at high rate and exhaust the operator's
+  // Alchemy quota without ever paying for a settle. /settle's reserve
+  // check is intentionally NOT cached — that path defends the bankroll
+  // floor and needs fresh balance; /health can tolerate 5s of staleness.
+  const HEALTH_BALANCE_CACHE_MS = 5_000;
+  let cachedHealthBalance: { ts: number; wei: bigint } | null = null;
+  const readHealthBalance = async (): Promise<bigint> => {
+    const now = Date.now();
+    if (
+      cachedHealthBalance &&
+      now - cachedHealthBalance.ts < HEALTH_BALANCE_CACHE_MS
+    ) {
+      return cachedHealthBalance.wei;
+    }
+    const wei = await relay.gasBalance();
+    cachedHealthBalance = { ts: now, wei };
+    return wei;
+  };
+
   app.get("/health", async (c) => {
     let ethBalanceWei: string | null = null;
     try {
-      const balance = await relay.gasBalance();
+      const balance = await readHealthBalance();
       ethBalanceWei = balance.toString();
-    } catch {
+    } catch (err) {
       // RPC unreachable. Body keeps the structured payload; status flips to
       // 503 so load balancers drain this instance instead of routing traffic.
+      // Surface the underlying error to stderr — the operator should not
+      // have to ssh in and grep route logs to learn why /health is failing.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.health.balance_rpc_error err=${JSON.stringify(msg)}\n`,
+      );
     }
     const ok = ethBalanceWei !== null;
     const snap = gasGuard.snapshot();
@@ -195,6 +223,26 @@ const isEntry =
 let app: ReturnType<typeof createApp> | undefined;
 
 if (isEntry) {
+  // Register safety handlers FIRST, before any user code runs. Without
+  // these, a stray rejected promise or a synchronous throw from a route
+  // handler can take the process down silently in modern Node — no log
+  // line, no exit code reason, just a black box for the operator.
+  process.on("unhandledRejection", (reason) => {
+    const msg = reason instanceof Error ? reason.message : String(reason);
+    const stack =
+      reason instanceof Error && reason.stack ? reason.stack : "";
+    process.stderr.write(
+      `facilitator.unhandled_rejection reason=${JSON.stringify(msg)} stack=${JSON.stringify(stack)}\n`,
+    );
+    process.exit(1);
+  });
+  process.on("uncaughtException", (err) => {
+    process.stderr.write(
+      `facilitator.uncaught_exception err=${JSON.stringify(err.message)} stack=${JSON.stringify(err.stack ?? "")}\n`,
+    );
+    process.exit(1);
+  });
+
   const env = loadEnv();
   const relay = createRelay(env);
   const store: FacilitatorLogStore = env.databaseUrl
@@ -212,10 +260,62 @@ if (isEntry) {
     maxPerHourWei: env.maxGasPerHourWei,
   });
   app = createApp({ relay, store, gasGuard });
-  serve({ fetch: app.fetch, port: env.port }, (info) => {
+  const httpServer = serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
       `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind}, min_reserve_wei=${env.minGasReserveWei}, max_gas_per_hour_wei=${env.maxGasPerHourWei})\n`,
     );
+  });
+
+  // Graceful shutdown. SIGTERM/SIGINT (Hetzner redeploy, Ctrl-C, container
+  // orchestrator) trigger the same sequence:
+  //   1. stop accepting new connections (httpServer.close)
+  //   2. drain in-flight settles up to SHUTDOWN_TIMEOUT_MS so on-chain
+  //      state and DB log stay in sync — every settle in flight has
+  //      already broadcast a tx, gas is already spent, and we owe the
+  //      data layer the corresponding row
+  //   3. close the Postgres pool
+  //   4. exit (code 0 on clean drain, 1 on timeout)
+  // Idempotent against repeated signals (two SIGTERMs in a row do not
+  // collapse the in-flight wait).
+  const SHUTDOWN_TIMEOUT_MS = 30_000;
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    process.stderr.write(
+      `facilitator.shutdown.start signal=${signal} in_flight=${relay.inFlightCount()}\n`,
+    );
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+    const deadline = Date.now() + SHUTDOWN_TIMEOUT_MS;
+    while (relay.inFlightCount() > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const remaining = relay.inFlightCount();
+    if (remaining > 0) {
+      process.stderr.write(
+        `facilitator.shutdown.timeout in_flight=${remaining}\n`,
+      );
+    }
+    if (store.close) {
+      try {
+        await store.close();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(
+          `facilitator.shutdown.store_close_error err=${JSON.stringify(msg)}\n`,
+        );
+      }
+    }
+    process.stderr.write(`facilitator.shutdown.complete\n`);
+    process.exit(remaining > 0 ? 1 : 0);
+  };
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
   });
 }
 

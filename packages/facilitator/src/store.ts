@@ -31,6 +31,12 @@ export interface FacilitatorLogStore {
   appendLog(entry: FacilitatorLogEntry): Promise<void>;
   /** Number of entries currently held. Useful for the smoke test only. */
   size(): Promise<number>;
+  /**
+   * Release any held resources (connection pool, file handles). Optional —
+   * call from graceful shutdown handlers. Implementations without external
+   * resources may omit it.
+   */
+  close?(): Promise<void>;
 }
 
 /**

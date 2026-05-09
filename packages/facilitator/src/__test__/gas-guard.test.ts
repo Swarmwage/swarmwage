@@ -186,6 +186,9 @@ function buildMockRelay(opts: {
       if (opts.gasBalanceThrows) throw new Error("rpc unreachable");
       return balance;
     },
+    inFlightCount() {
+      return 0;
+    },
     async verifyAuthorization() {
       return { isValid: true, payer: "0xbeef" };
     },

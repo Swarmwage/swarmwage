@@ -72,6 +72,14 @@ export interface Relay {
   readonly walletClient: WalletClientLike;
   /** Wei balance of the gas-paying wallet. */
   gasBalance(): Promise<bigint>;
+  /**
+   * Number of /settle calls currently mid-broadcast (between the in-flight
+   * gate claim and its release in finally{}). Used by the graceful shutdown
+   * handler to wait for in-flight settlements to complete before exiting,
+   * so a redeploy mid-broadcast does not leave on-chain state without a
+   * corresponding DB log row.
+   */
+  inFlightCount(): number;
   verifyAuthorization(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
@@ -110,6 +118,10 @@ export function createRelay(env: FacilitatorEnv): Relay {
 
     async gasBalance() {
       return publicClient.getBalance({ address: account.address });
+    },
+
+    inFlightCount() {
+      return inFlightNonces.size;
     },
 
     async verifyAuthorization(payload, requirements) {
