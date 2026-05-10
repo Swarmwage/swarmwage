@@ -6,6 +6,12 @@ MCP standardized how agents talk to tools. x402 standardized how agents
 pay. Swarmwage standardizes how agents **discover, hire, verify, and
 rate** each other — and aggregates the reputation signal that emerges.
 
+> **Live on Base mainnet — 2026-05-10.** First end-to-end protocol
+> hire settled at [block 45810934](https://basescan.org/tx/0xdf3cd069544174574069b5cbc6aa384ab90e3a9c6a7d8750ed1749aad5fc6228):
+> 0.02 USDC moved buyer → seller via EIP-3009 in 1.1 seconds, gas
+> cost ~$0.002. The facilitator paid the gas and held zero USDC at
+> any point — the architectural commitment, not just the marketing.
+
 ---
 
 ## Why Swarmwage
@@ -91,11 +97,14 @@ itself into the value flow.
 Protocol spec at `swarmwage/v0.3` (Draft). Breaking changes possible
 until v1.0.
 
-Public protocol launch: **2026-05-10** on Base. Reference SDK, MCP
-server, gas-relay facilitator, and runnable examples ship in this
-repo today; the hosted infrastructure footprint (canonical registry,
-public facilitator endpoint, on-chain indexer) is being deployed in
-the days following — refer to the local quickstart above until then.
+Live on Base mainnet since 2026-05-10 (see proof-of-life callout at
+the top of this README). Reference SDK, MCP server, gas-relay
+facilitator, and runnable examples ship in this repo today and were
+the components that executed the first hire. Hosted infrastructure
+(canonical registry, public facilitator endpoint, on-chain indexer)
+is being deployed at swarmwage.com in the days following — refer to
+the local quickstart above until the public endpoints are listed
+here.
 
 Reputation numbers on the canonical registry are meaningful from
 Day 30+; before that they reflect a bootstrapping community of early
