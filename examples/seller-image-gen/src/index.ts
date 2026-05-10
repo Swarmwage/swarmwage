@@ -23,6 +23,8 @@ import {
   type Hex,
   type Listing,
 } from "@swarmwage/agent-sdk";
+import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
+import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -39,6 +41,42 @@ const PRICE_USDC = process.env.PRICE_USDC ?? "0.10";
 const NETWORK = (process.env.NETWORK ?? "base-sepolia") as Network;
 const FACILITATOR_URL = (process.env.FACILITATOR_URL ??
   "https://x402.org/facilitator") as `${string}://${string}`;
+
+// Per-IP rate limit on /hire. Tunable via env so an operator can tighten
+// or loosen for a known-trusted deployment without rebuilding.
+const HIRE_RATE_LIMIT_PER_IP = Number(
+  process.env.HIRE_RATE_LIMIT_PER_IP ?? 20,
+);
+const HIRE_RATE_WINDOW_MS = Number(process.env.HIRE_RATE_WINDOW_MS ?? 60_000);
+const hireIpLimiter = new SlidingWindowLimiter({
+  limit: HIRE_RATE_LIMIT_PER_IP,
+  windowMs: HIRE_RATE_WINDOW_MS,
+});
+setInterval(() => hireIpLimiter.gc(), HIRE_RATE_WINDOW_MS).unref();
+
+// Per-day budget guard. Caps both hire count AND cumulative upstream USD,
+// resetting at UTC midnight. Tunable via env so an operator can lift the
+// ceiling for a known-trusted deployment without rebuilding.
+const MAX_DAILY_HIRES = Number(process.env.MAX_DAILY_HIRES ?? 1000);
+const MAX_DAILY_SPEND_USD = Number(process.env.MAX_DAILY_SPEND_USD ?? 50);
+// Pollinations.ai is free at the listed flux model — leave 0 unless the
+// operator switches to a paid backend.
+const EST_UPSTREAM_USD_PER_CALL = Number(
+  process.env.EST_UPSTREAM_USD_PER_CALL ?? 0,
+);
+const dailyBudget = new DailyBudget({
+  maxHires: MAX_DAILY_HIRES,
+  maxSpendUsd: MAX_DAILY_SPEND_USD,
+});
+
+// Input bounds. Pollinations.ai is forgiving but unbounded prompts /
+// 10000×10000 dimensions will burn its free-tier quota and earn our
+// outbound IP a ban; cap defensively. All overridable via env.
+const MAX_PROMPT_LENGTH = Number(process.env.MAX_PROMPT_LENGTH ?? 500);
+const MAX_WIDTH = Number(process.env.MAX_WIDTH ?? 1024);
+const MAX_HEIGHT = Number(process.env.MAX_HEIGHT ?? 1024);
+const DEFAULT_WIDTH = 1024;
+const DEFAULT_HEIGHT = 1024;
 
 const account = privateKeyToAccount(PRIVATE_KEY);
 const agentId = account.address.toLowerCase() as AgentId;
@@ -98,6 +136,52 @@ interface ImageGenOutput {
   height: number;
 }
 
+type ValidationResult =
+  | { ok: true; value: ImageGenInput }
+  | { ok: false; error: string };
+
+function validateImageGenInput(
+  params: Partial<ImageGenInput> | undefined,
+): ValidationResult {
+  if (!params || typeof params !== "object") {
+    return { ok: false, error: "Missing params" };
+  }
+  if (typeof params.prompt !== "string" || params.prompt.length === 0) {
+    return { ok: false, error: "Missing params.prompt" };
+  }
+  if (params.prompt.length > MAX_PROMPT_LENGTH) {
+    return {
+      ok: false,
+      error: `params.prompt exceeds ${MAX_PROMPT_LENGTH} chars (got ${params.prompt.length})`,
+    };
+  }
+  const width = params.width ?? DEFAULT_WIDTH;
+  const height = params.height ?? DEFAULT_HEIGHT;
+  if (!Number.isInteger(width) || width <= 0 || width > MAX_WIDTH) {
+    return {
+      ok: false,
+      error: `params.width must be a positive integer ≤ ${MAX_WIDTH}`,
+    };
+  }
+  if (!Number.isInteger(height) || height <= 0 || height > MAX_HEIGHT) {
+    return {
+      ok: false,
+      error: `params.height must be a positive integer ≤ ${MAX_HEIGHT}`,
+    };
+  }
+  let seed: number | undefined;
+  if (params.seed !== undefined) {
+    if (!Number.isInteger(params.seed)) {
+      return {
+        ok: false,
+        error: "params.seed must be an integer when provided",
+      };
+    }
+    seed = params.seed;
+  }
+  return { ok: true, value: { prompt: params.prompt, width, height, seed } };
+}
+
 async function generateImage(input: ImageGenInput): Promise<ImageGenOutput> {
   const url = new URL(
     `https://image.pollinations.ai/prompt/${encodeURIComponent(input.prompt)}`,
@@ -136,6 +220,16 @@ app.get("/", (c) =>
     price_usdc: PRICE_USDC,
   }),
 );
+
+// Per-IP flood guard. Mounted BEFORE paymentMiddleware so a flood attack
+// is rejected with 429 without ever invoking the facilitator (no gas burn,
+// no upstream API hit).
+app.use("/hire", rateLimit(hireIpLimiter, clientIp));
+
+// Per-day budget guard — closes /hire with 503 once the day's hire count or
+// upstream spend cap is hit. Mounted before paymentMiddleware so the buyer
+// is never charged USDC for a call we cannot fulfil.
+app.use("/hire", dailyBudgetGuard(dailyBudget, EST_UPSTREAM_USD_PER_CALL));
 
 // x402 payment middleware: protects POST /hire.
 // Buyer's first call returns 402 with PaymentRequirements; buyer signs an
@@ -179,13 +273,14 @@ app.post("/hire", async (c) => {
       400,
     );
   }
-  if (!body.params?.prompt) {
-    return c.json({ error: "Missing params.prompt" }, 400);
+  const validation = validateImageGenInput(body.params);
+  if (!validation.ok) {
+    return c.json({ error: validation.error }, 400);
   }
 
   let result: ImageGenOutput;
   try {
-    result = await generateImage(body.params);
+    result = await generateImage(validation.value);
   } catch (err) {
     return c.json({ error: `Generation failed: ${(err as Error).message}` }, 502);
   }

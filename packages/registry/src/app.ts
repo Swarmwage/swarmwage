@@ -64,11 +64,21 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   );
 
   // Rate limit per-IP on flood-prone unauthenticated endpoints.
-  // Token bucket: 5 req/sec sustained, 30 burst.
+  // Token bucket: 5 req/sec sustained, 30 burst. The bucket is shared
+  // across all protected paths so an attacker cannot multiply their rate
+  // by spreading the flood across endpoints.
   const floodGuard = rateLimit({ refillPerSec: 5, burst: 30 });
   app.use("/v1/rate", floodGuard);
   app.use("/v1/claim/*", floodGuard);
   app.use("/telemetry", floodGuard);
+  // /v1/search returns up to 100 results per query — scrape protection.
+  app.use("/v1/search", floodGuard);
+  // /v1/listings POST runs ECDSA signature recovery (CPU); /v1/listings
+  // GET is the indexer's recipient lookup. 5/sec is plenty for both.
+  app.use("/v1/listings", floodGuard);
+  // /v1/receipts POST runs ECDSA signature recovery on each call — same
+  // CPU profile as /v1/listings POST.
+  app.use("/v1/receipts", floodGuard);
 
   app.get("/", (c) =>
     c.json({
