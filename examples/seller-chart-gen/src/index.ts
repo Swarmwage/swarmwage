@@ -31,6 +31,8 @@ import {
   type Hex,
   type Listing,
 } from "@swarmwage/agent-sdk";
+import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
+import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -48,6 +50,32 @@ const NETWORK = (process.env.NETWORK ?? "base-sepolia") as Network;
 const FACILITATOR_URL = (process.env.FACILITATOR_URL ??
   "https://x402.org/facilitator") as `${string}://${string}`;
 const PYTHON_BIN = process.env.PYTHON_BIN ?? "python3";
+
+// Per-IP rate limit on /hire. Tunable via env so an operator can tighten
+// or loosen for a known-trusted deployment without rebuilding.
+const HIRE_RATE_LIMIT_PER_IP = Number(
+  process.env.HIRE_RATE_LIMIT_PER_IP ?? 20,
+);
+const HIRE_RATE_WINDOW_MS = Number(process.env.HIRE_RATE_WINDOW_MS ?? 60_000);
+const hireIpLimiter = new SlidingWindowLimiter({
+  limit: HIRE_RATE_LIMIT_PER_IP,
+  windowMs: HIRE_RATE_WINDOW_MS,
+});
+setInterval(() => hireIpLimiter.gc(), HIRE_RATE_WINDOW_MS).unref();
+
+// Per-day budget guard. Caps both hire count AND cumulative upstream USD,
+// resetting at UTC midnight. Tunable via env so an operator can lift the
+// ceiling for a known-trusted deployment without rebuilding.
+const MAX_DAILY_HIRES = Number(process.env.MAX_DAILY_HIRES ?? 1000);
+const MAX_DAILY_SPEND_USD = Number(process.env.MAX_DAILY_SPEND_USD ?? 50);
+// matplotlib sidecar runs locally — no upstream API cost. Leave 0.
+const EST_UPSTREAM_USD_PER_CALL = Number(
+  process.env.EST_UPSTREAM_USD_PER_CALL ?? 0,
+);
+const dailyBudget = new DailyBudget({
+  maxHires: MAX_DAILY_HIRES,
+  maxSpendUsd: MAX_DAILY_SPEND_USD,
+});
 
 const account = privateKeyToAccount(PRIVATE_KEY);
 const agentId = account.address.toLowerCase() as AgentId;
@@ -246,6 +274,15 @@ app.get("/", (c) =>
     price_usdc: PRICE_USDC,
   }),
 );
+
+// Per-IP flood guard. Mounted BEFORE paymentMiddleware so a flood attack
+// is rejected with 429 without ever invoking the facilitator.
+app.use("/hire", rateLimit(hireIpLimiter, clientIp));
+
+// Per-day budget guard — closes /hire with 503 once the day's hire count or
+// upstream spend cap is hit. Mounted before paymentMiddleware so the buyer
+// is never charged USDC for a call we cannot fulfil.
+app.use("/hire", dailyBudgetGuard(dailyBudget, EST_UPSTREAM_USD_PER_CALL));
 
 app.use(
   paymentMiddleware(
