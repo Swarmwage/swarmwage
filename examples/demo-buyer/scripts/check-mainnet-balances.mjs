@@ -59,7 +59,20 @@ for (const s of [
   if (k) wallets.push({ label: s, address: privateKeyToAccount(k).address });
 }
 
-const client = createPublicClient({ chain: base, transport: http() });
+// Read RPC from env so the operator can point at a dedicated Alchemy /
+// QuickNode / etc endpoint. The default https://mainnet.base.org is
+// public and aggressively rate-limited (~5 reads/sec) — six balance
+// reads in a tight loop trip the limiter on the last call.
+const rpcUrl = process.env.RPC_URL;
+const client = createPublicClient({
+  chain: base,
+  transport: http(rpcUrl),
+});
+if (!rpcUrl) {
+  console.log(
+    "Note: using public Base RPC (rate-limited). Set RPC_URL to a dedicated endpoint to avoid 'over rate limit' errors.\n",
+  );
+}
 
 console.log(`\nBase mainnet balances (chain id ${base.id}):\n`);
 console.log(
