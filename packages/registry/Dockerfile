@@ -21,7 +21,7 @@ RUN pnpm install --frozen-lockfile --filter @swarmwage/registry...
 COPY packages/sdk-ts ./packages/sdk-ts
 COPY packages/registry ./packages/registry
 
-RUN pnpm --filter @swarmwage/registry build
+RUN pnpm --filter @swarmwage/registry... build
 
 RUN pnpm --filter @swarmwage/registry deploy --prod /out
 
