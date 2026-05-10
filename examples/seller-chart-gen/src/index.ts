@@ -343,19 +343,14 @@ app.post("/hire", async (c) => {
   const receiptId = `rcpt_${crypto.randomUUID()}`;
   const ratingToken = `rtt_${crypto.randomUUID()}`;
 
-  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
-  let txHash =
+  // x402-hono sets X-PAYMENT-RESPONSE on c.res ONLY after this handler
+  // returns and the response is finalized. Reading c.res.headers here would
+  // give null. We defer receipt submission to setImmediate so the header is
+  // populated by the time we read it. The body returned to the buyer still
+  // carries tx_hash=0x000…000 — the @swarmwage/agent-sdk client patches it
+  // from the response header on its side.
+  const ZERO_HASH =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
-  if (paymentResponseHeader) {
-    try {
-      const decoded = JSON.parse(
-        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
-      ) as { transaction?: string; txHash?: string };
-      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
-    } catch {
-      // header malformed — keep placeholder; the header is still authoritative
-    }
-  }
 
   const verification = {
     checks: [
@@ -366,31 +361,47 @@ app.post("/hire", async (c) => {
     all_passed: true,
   };
 
-  // Layer 3 data capture: submit a signed receipt to the canonical
-  // registry. Fire-and-forget — never blocks the buyer's response.
-  // Opt out with SWARMWAGE_RECEIPTS=0.
-  void submitReceipt({
-    registryUrl: REGISTRY_URL,
-    sellerPrivateKey: PRIVATE_KEY,
-    payload: {
-      protocol_version: PROTOCOL_VERSION,
-      hire_id: receiptId,
-      agent_id: agentId,
-      buyer:
-        (body.buyer_id?.toLowerCase() as AgentId) ??
-        ("0x0000000000000000000000000000000000000000" as AgentId),
-      capability: body.capability ?? "chart.generate.from-data",
-      amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
-      network: NETWORK as "base" | "base-sepolia",
-      tx_hash: txHash as `0x${string}`,
-      completed_at: new Date(completedAt * 1000).toISOString(),
-      verification: {
-        all_passed: verification.all_passed,
-        checks: Object.fromEntries(
-          verification.checks.map((c) => [c.name, c.passed]),
-        ),
+  // Layer 3 data capture: submit a signed receipt to the canonical registry.
+  // Deferred to setImmediate so the X-PAYMENT-RESPONSE header is available.
+  // Fire-and-forget — never blocks the buyer's response. Opt out with
+  // SWARMWAGE_RECEIPTS=0.
+  setImmediate(() => {
+    let txHash = ZERO_HASH;
+    const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
+    if (paymentResponseHeader) {
+      try {
+        const decoded = JSON.parse(
+          Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
+        ) as { transaction?: string; txHash?: string };
+        txHash = decoded.transaction ?? decoded.txHash ?? txHash;
+      } catch {
+        // header malformed — keep placeholder
+      }
+    }
+
+    void submitReceipt({
+      registryUrl: REGISTRY_URL,
+      sellerPrivateKey: PRIVATE_KEY,
+      payload: {
+        protocol_version: PROTOCOL_VERSION,
+        hire_id: receiptId,
+        agent_id: agentId,
+        buyer:
+          (body.buyer_id?.toLowerCase() as AgentId) ??
+          ("0x0000000000000000000000000000000000000000" as AgentId),
+        capability: body.capability ?? "chart.generate.from-data",
+        amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
+        network: NETWORK as "base" | "base-sepolia",
+        tx_hash: txHash as `0x${string}`,
+        completed_at: new Date(completedAt * 1000).toISOString(),
+        verification: {
+          all_passed: verification.all_passed,
+          checks: Object.fromEntries(
+            verification.checks.map((c) => [c.name, c.passed]),
+          ),
+        },
       },
-    },
+    });
   });
 
   return c.json({
@@ -400,7 +411,7 @@ app.post("/hire", async (c) => {
       buyer_id: body.buyer_id ?? "0x0000000000000000000000000000000000000000",
       seller_id: agentId,
       capability: body.capability,
-      tx_hash: txHash,
+      tx_hash: ZERO_HASH,
       price_paid_usdc: PRICE_USDC,
       completed_at: completedAt,
     },

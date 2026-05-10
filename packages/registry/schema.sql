@@ -45,10 +45,14 @@ CREATE INDEX IF NOT EXISTS hires_seller_idx ON hires(seller_id);
 CREATE INDEX IF NOT EXISTS hires_buyer_idx ON hires(buyer_id);
 CREATE INDEX IF NOT EXISTS hires_completed_at_idx ON hires(completed_at DESC);
 
+-- Note on receipt_id: stored as opaque TEXT (currently the rating_token is
+-- reused as a placeholder receipt_id). No FK to hires/receipts because
+-- cross-correlation is application-side via the indexer joining
+-- facilitator_logs + receipts on (payer, recipient, amount, ts).
 CREATE TABLE IF NOT EXISTS ratings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   rating_token TEXT UNIQUE NOT NULL,
-  receipt_id TEXT NOT NULL REFERENCES hires(receipt_id) ON DELETE CASCADE,
+  receipt_id TEXT NOT NULL,
   rater_id TEXT NOT NULL,
   rated_id TEXT NOT NULL,
   stars SMALLINT NOT NULL CHECK (stars BETWEEN 1 AND 5),
