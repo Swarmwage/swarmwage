@@ -72,6 +72,14 @@ export interface Relay {
   readonly walletClient: WalletClientLike;
   /** Wei balance of the gas-paying wallet. */
   gasBalance(): Promise<bigint>;
+  /**
+   * Number of /settle calls currently mid-broadcast (between the in-flight
+   * gate claim and its release in finally{}). Used by the graceful shutdown
+   * handler to wait for in-flight settlements to complete before exiting,
+   * so a redeploy mid-broadcast does not leave on-chain state without a
+   * corresponding DB log row.
+   */
+  inFlightCount(): number;
   verifyAuthorization(
     payload: PaymentPayload,
     requirements: PaymentRequirements,
@@ -92,6 +100,15 @@ export function createRelay(env: FacilitatorEnv): Relay {
 
   const network = env.network;
 
+  // Per-relay set of in-flight `(from, nonce)` pairs currently being
+  // broadcast. The check-and-add at settle time is sync (no await between
+  // `has` and `add`), so under Node's single-threaded model two concurrent
+  // /settle calls for the same authorization cannot both reach
+  // writeContract — the second one returns invalid_transaction_state
+  // without burning gas on a guaranteed on-chain revert. The slot is
+  // released in finally{} after waitForTransactionReceipt resolves.
+  const inFlightNonces = new Set<string>();
+
   return {
     network,
     chainId: chain.id,
@@ -101,6 +118,10 @@ export function createRelay(env: FacilitatorEnv): Relay {
 
     async gasBalance() {
       return publicClient.getBalance({ address: account.address });
+    },
+
+    inFlightCount() {
+      return inFlightNonces.size;
     },
 
     async verifyAuthorization(payload, requirements) {
@@ -122,6 +143,7 @@ export function createRelay(env: FacilitatorEnv): Relay {
         publicClient,
         walletClient,
         account,
+        inFlightNonces,
       });
     },
   };
@@ -232,6 +254,15 @@ async function verifyAuthorization(args: VerifyArgs): Promise<VerifyResponse> {
   if (required === null || authorized === null) {
     return buildVerifyFailure("invalid_exact_evm_payload_authorization_value", payer);
   }
+  // Reject zero-amount payments. The upstream x402 schema admits the
+  // literal string "0" as a valid integer for both `maxAmountRequired`
+  // and `auth.value` (its refine() only checks `Number(v) >= 0`). Without
+  // this guard, a buyer could submit a free authorization for 0 USDC
+  // that nonetheless burns real ETH gas on broadcast — a zero-cost
+  // gas-drain attack with no economic substance for either party.
+  if (required <= 0n || authorized <= 0n) {
+    return buildVerifyFailure("invalid_payment_requirements", payer);
+  }
   if (authorized < required) {
     return buildVerifyFailure(
       "invalid_exact_evm_payload_authorization_value",
@@ -254,6 +285,21 @@ async function verifyAuthorization(args: VerifyArgs): Promise<VerifyResponse> {
   }
   if (now >= validBefore) {
     return buildVerifyFailure("payment_expired", payer);
+  }
+
+  // Signature shape + low-S canonical check. Reject high-S now so that
+  // /verify and /settle agree: a payload that passes verify must also
+  // pass the splitSignature gate at settle time. viem's recoverTypedData
+  // normalizes high-S internally and would still recover the correct
+  // address, hiding the malleability — so we cannot rely on it for this
+  // check.
+  try {
+    splitSignature(evm.signature);
+  } catch {
+    return buildVerifyFailure(
+      "invalid_exact_evm_payload_signature",
+      payer,
+    );
   }
 
   // EIP-712 signature recovery.
@@ -355,13 +401,25 @@ interface SettleArgs {
   publicClient: PublicClientLike;
   walletClient: WalletClientLike;
   account: Account;
+  inFlightNonces: Set<string>;
+}
+
+function inFlightKey(from: string, nonce: string): string {
+  return `${from.toLowerCase()}:${nonce.toLowerCase()}`;
 }
 
 async function settleAuthorization(
   args: SettleArgs,
 ): Promise<{ response: SettleResponse; gasSpentWei: bigint | null }> {
-  const { payload, requirements, network, publicClient, walletClient, account } =
-    args;
+  const {
+    payload,
+    requirements,
+    network,
+    publicClient,
+    walletClient,
+    account,
+    inFlightNonces,
+  } = args;
 
   // Re-run verification before broadcasting. Cheap insurance against a
   // /verify being skipped or stale state being acted on.
@@ -391,46 +449,62 @@ async function settleAuthorization(
     };
   }
   const auth = evm.authorization;
-  const { v, r, s } = splitSignature(evm.signature);
 
-  let txHash: Hex;
-  try {
-    txHash = await walletClient.writeContract({
-      account,
-      chain: CHAIN_BY_NETWORK[network],
-      address: USDC_ADDRESS[network],
-      abi: USDC_ABI,
-      functionName: "transferWithAuthorization",
-      args: [
-        auth.from as Address,
-        auth.to as Address,
-        BigInt(auth.value),
-        BigInt(auth.validAfter),
-        BigInt(auth.validBefore),
-        auth.nonce as Hex,
-        v,
-        r,
-        s,
-      ],
-    });
-  } catch {
+  // Claim the in-flight slot for this (from, nonce). The has-then-add
+  // sequence is sync — no await between the two calls — so under Node's
+  // single-threaded execution model two concurrent settles for the same
+  // authorization cannot both pass this gate. The second returns
+  // invalid_transaction_state without ever calling writeContract, which
+  // is the entire point: a guaranteed on-chain revert burns gas, and
+  // `authorizationState` is too eventually-consistent to catch the
+  // duplicate before broadcast.
+  const key = inFlightKey(auth.from, auth.nonce);
+  if (inFlightNonces.has(key)) {
     return {
       response: buildSettleFailure(
         network,
-        "unexpected_settle_error",
+        "invalid_transaction_state",
         auth.from,
       ),
       gasSpentWei: null,
     };
   }
+  inFlightNonces.add(key);
 
-  // Wait for inclusion to confirm settlement and capture gas spent.
-  let gasSpentWei: bigint | null = null;
   try {
-    const receipt = await publicClient.waitForTransactionReceipt({
-      hash: txHash,
-    });
-    if (receipt.status !== "success") {
+    let v: number;
+    let r: Hex;
+    let s: Hex;
+    try {
+      ({ v, r, s } = splitSignature(evm.signature));
+    } catch {
+      return {
+        response: buildSettleFailure(network, "invalid_payload", auth.from),
+        gasSpentWei: null,
+      };
+    }
+
+    let txHash: Hex;
+    try {
+      txHash = await walletClient.writeContract({
+        account,
+        chain: CHAIN_BY_NETWORK[network],
+        address: USDC_ADDRESS[network],
+        abi: USDC_ABI,
+        functionName: "transferWithAuthorization",
+        args: [
+          auth.from as Address,
+          auth.to as Address,
+          BigInt(auth.value),
+          BigInt(auth.validAfter),
+          BigInt(auth.validBefore),
+          auth.nonce as Hex,
+          v,
+          r,
+          s,
+        ],
+      });
+    } catch {
       return {
         response: buildSettleFailure(
           network,
@@ -440,12 +514,66 @@ async function settleAuthorization(
         gasSpentWei: null,
       };
     }
-    gasSpentWei =
-      BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
-  } catch {
-    // Transaction was broadcast but inclusion wait failed. Surface the hash
-    // so the caller can poll independently rather than re-broadcasting and
-    // burning the nonce twice.
+
+    // Wait for inclusion to confirm settlement and capture gas spent.
+    // Gas is computed BEFORE the success/revert branch so that the
+    // bankroll cost of an on-chain revert is also returned to the
+    // caller — the gas guard records both successful and reverted
+    // broadcasts to track the true bankroll burn rate. Explicit 30s
+    // timeout: viem's default is unbounded polling, which would hang
+    // a route handler indefinitely if the sequencer falls behind. On
+    // timeout viem throws and the catch below returns success with the
+    // tx hash so the caller can poll independently — the broadcast
+    // already happened, no point burning a fresh nonce.
+    let gasSpentWei: bigint | null = null;
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: txHash,
+        timeout: 30_000,
+      });
+      gasSpentWei =
+        BigInt(receipt.gasUsed) * BigInt(receipt.effectiveGasPrice ?? 0);
+      if (receipt.status !== "success") {
+        return {
+          response: buildSettleFailure(
+            network,
+            "unexpected_settle_error",
+            auth.from,
+          ),
+          gasSpentWei,
+        };
+      }
+    } catch (err) {
+      // Transaction was broadcast but inclusion wait failed (timeout, RPC
+      // dropout, etc). Surface the hash so the caller can poll
+      // independently rather than re-broadcasting and burning the nonce
+      // twice. Stderr line gives the operator a real-time signal that
+      // settles are landing but receipts aren't being read.
+      //
+      // Known gap: returning gasSpentWei: null means the gas guard's
+      // record() will skip this case — but real ETH was spent on the
+      // broadcast (transferWithAuthorization burns gas at inclusion).
+      // In normal operation receipts arrive in 2–4 seconds on Base, so
+      // this is a non-issue; during a sustained sequencer slowdown the
+      // hourly cap may slightly underestimate true spend. The reserve
+      // floor still reads fresh balance on every /settle so the
+      // bankroll-bottom defense is uncompromised — the gap is in
+      // attribution, not in protection.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.settle.receipt_wait_failed tx=${txHash} err=${JSON.stringify(msg)}\n`,
+      );
+      return {
+        response: {
+          success: true,
+          network,
+          transaction: txHash,
+          payer: auth.from,
+        },
+        gasSpentWei: null,
+      };
+    }
+
     return {
       response: {
         success: true,
@@ -453,19 +581,11 @@ async function settleAuthorization(
         transaction: txHash,
         payer: auth.from,
       },
-      gasSpentWei: null,
+      gasSpentWei,
     };
+  } finally {
+    inFlightNonces.delete(key);
   }
-
-  return {
-    response: {
-      success: true,
-      network,
-      transaction: txHash,
-      payer: auth.from,
-    },
-    gasSpentWei,
-  };
 }
 
 function verifyReasonToSettleReason(
@@ -475,3 +595,17 @@ function verifyReasonToSettleReason(
   // is already a valid settle errorReason. The cast is a structural no-op.
   return reason as SettleResponse["errorReason"];
 }
+
+// ---------------------------------------------------------------------------
+// Test-only exports
+// ---------------------------------------------------------------------------
+//
+// The internal settle/verify functions are exposed here for unit tests that
+// need to inject mocked viem clients (publicClient / walletClient). Not
+// part of the public API; do NOT import this from anywhere except
+// `src/__test__/`.
+export const __test__ = {
+  settleAuthorization,
+  verifyAuthorization,
+  inFlightKey,
+};

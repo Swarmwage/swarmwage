@@ -13,6 +13,28 @@ const HexPrivateKeySchema = z
 const LogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 export type LogLevel = z.infer<typeof LogLevelSchema>;
 
+// Wei amount as a decimal string. Accepts the literal "0" (disables the
+// guard for that dimension) plus any positive integer. Returned as bigint
+// because USDC + ETH amounts overflow JS Number above 2^53.
+const WeiAmountSchema = z
+  .string()
+  .regex(/^\d+$/, "must be a non-negative integer in wei (decimal string)")
+  .transform((v) => BigInt(v));
+
+// Defaults sized for a Day-7 mainnet bankroll. Operators can raise or
+// lower via env. The hourly cap defaults are intentionally generous
+// relative to expected legitimate traffic — the goal is to bound the
+// worst-case loss, not to throttle normal use.
+//
+// Reference for sizing: a typical USDC.transferWithAuthorization on
+// Base costs ~75–100k gas. At 0.1 gwei (Base typical) a single settle
+// burns ~10^13 wei. The reserve default below leaves ~500 settles of
+// headroom above the floor — enough lead time for an operator to
+// receive a low-balance alert and top-up before the kill-switch trips.
+// The hourly cap allows ~2,000 settles before refusal.
+const DEFAULT_MIN_GAS_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 ETH
+const DEFAULT_MAX_GAS_PER_HOUR_WEI = 20_000_000_000_000_000n; // 0.02 ETH
+
 const EnvSchema = z.object({
   PORT: z
     .string()
@@ -24,6 +46,8 @@ const EnvSchema = z.object({
   FACILITATOR_GAS_PRIVATE_KEY: HexPrivateKeySchema,
   DATABASE_URL: z.string().url().optional(),
   LOG_LEVEL: LogLevelSchema.default("info"),
+  MIN_GAS_RESERVE_WEI: WeiAmountSchema.optional(),
+  MAX_GAS_PER_HOUR_WEI: WeiAmountSchema.optional(),
 });
 
 export type FacilitatorEnv = {
@@ -33,6 +57,8 @@ export type FacilitatorEnv = {
   gasPrivateKey: `0x${string}`;
   databaseUrl: string | undefined;
   logLevel: LogLevel;
+  minGasReserveWei: bigint;
+  maxGasPerHourWei: bigint;
 };
 
 /**
@@ -58,5 +84,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): FacilitatorEnv
     gasPrivateKey: e.FACILITATOR_GAS_PRIVATE_KEY as `0x${string}`,
     databaseUrl: e.DATABASE_URL,
     logLevel: e.LOG_LEVEL,
+    minGasReserveWei: e.MIN_GAS_RESERVE_WEI ?? DEFAULT_MIN_GAS_RESERVE_WEI,
+    maxGasPerHourWei: e.MAX_GAS_PER_HOUR_WEI ?? DEFAULT_MAX_GAS_PER_HOUR_WEI,
   };
 }

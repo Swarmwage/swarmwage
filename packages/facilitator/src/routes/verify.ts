@@ -48,23 +48,35 @@ export function createVerifyHandler({ relay, store }: Deps) {
             .authorization)
         : null;
 
-    void store.appendLog({
-      ts: start,
-      route: "verify",
-      network: paymentPayload.network,
-      agent_id: null,
-      capability: null,
-      payer_address: evmAuth?.from ?? "",
-      recipient_address: evmAuth?.to ?? paymentRequirements.payTo,
-      amount_usdc_atomic: evmAuth?.value ?? paymentRequirements.maxAmountRequired,
-      tx_hash: null,
-      gas_eth_spent_wei: null,
-      latency_ms: latency,
-      ok: result.isValid,
-      error: result.invalidReason ?? null,
-      raw_request: raw,
-      raw_response: result,
-    });
+    // Block the response on the log write — see settle.ts for rationale.
+    // For /verify the cost is even smaller because no on-chain broadcast
+    // happened; the request was already an RPC round-trip away from
+    // sub-millisecond.
+    try {
+      await store.appendLog({
+        ts: start,
+        route: "verify",
+        network: paymentPayload.network,
+        agent_id: null,
+        capability: null,
+        payer_address: evmAuth?.from ?? "",
+        recipient_address: evmAuth?.to ?? paymentRequirements.payTo,
+        amount_usdc_atomic:
+          evmAuth?.value ?? paymentRequirements.maxAmountRequired,
+        tx_hash: null,
+        gas_eth_spent_wei: null,
+        latency_ms: latency,
+        ok: result.isValid,
+        error: result.invalidReason ?? null,
+        raw_request: raw,
+        raw_response: result,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.verify.log_write_error err=${msg}\n`,
+      );
+    }
 
     return c.json(result, 200);
   };

@@ -30,6 +30,9 @@ function buildMockRelay(): Relay {
     async gasBalance() {
       return 0n;
     },
+    inFlightCount() {
+      return 0;
+    },
     async verifyAuthorization() {
       return { isValid: false, invalidReason: "invalid_payload" };
     },
@@ -73,6 +76,58 @@ test("GET /health returns gas wallet info", async () => {
   assert.equal(body.gas_wallet, relay.account.address);
   assert.equal(body.ok, true);
   assert.equal(body.eth_balance_wei, "0");
+  // Default app harness has no gas guard configured, so /health reports a
+  // permissive snapshot (caps disabled, reserve floor disabled, breach
+  // false because the floor is also zero).
+  const guard = body.gas_guard as Record<string, unknown>;
+  assert.ok(guard);
+  assert.equal(guard.hourly_used_wei, "0");
+  assert.equal(guard.hourly_cap_wei, "0");
+  assert.equal(guard.hourly_used_pct, null);
+  assert.equal(guard.reserve_wei, "0");
+  assert.equal(guard.reserve_breached, false);
+});
+
+test("GET /health caches gas balance for 5s (RPC-amplification defense)", async () => {
+  // Custom relay that counts gasBalance() invocations. Two back-to-back
+  // /health requests must result in exactly one RPC call — proves the
+  // cache short-circuits the second hit. /health is CORS-open and would
+  // otherwise be trivially RPC-amplifiable from a malicious browser.
+  const account = privateKeyToAccount(DUMMY_KEY);
+  let gasBalanceCalls = 0;
+  const relay = {
+    network: "base-sepolia" as const,
+    chainId: 84_532,
+    account,
+    publicClient: {} as never,
+    walletClient: {} as never,
+    async gasBalance() {
+      gasBalanceCalls++;
+      return 0n;
+    },
+    inFlightCount() {
+      return 0;
+    },
+    async verifyAuthorization() {
+      return { isValid: false, invalidReason: "invalid_payload" } as never;
+    },
+    async settleAuthorization() {
+      return {
+        response: {
+          success: false,
+          network: "base-sepolia",
+          transaction: "",
+          errorReason: "unexpected_settle_error",
+        },
+        gasSpentWei: null,
+      } as never;
+    },
+  };
+  const app = createApp({ relay, store: new InMemoryStore() });
+  await app.request("/health");
+  await app.request("/health");
+  await app.request("/health");
+  assert.equal(gasBalanceCalls, 1);
 });
 
 test("GET /supported lists the active scheme + network", async () => {
