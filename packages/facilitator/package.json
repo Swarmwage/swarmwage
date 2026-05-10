@@ -8,8 +8,8 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsup",
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "node --import tsx --test src/__test__/*.test.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
