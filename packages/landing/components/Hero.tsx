@@ -33,7 +33,11 @@ export function Hero() {
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <CopyCommand command="npm i @swarmwage/agent-sdk" />
+              <CopyCommand command="npx -y @swarmwage/mcp" />
+              <CopyCommand
+                command="npm i @swarmwage/agent-sdk"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--color-rule-strong)] text-[var(--color-fg)] text-[13px] font-mono rounded-md hover:bg-[var(--color-bg-2)] transition-colors"
+              />
               <a
                 className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--color-rule-strong)] text-[var(--color-fg)] text-sm font-medium rounded-md hover:bg-[var(--color-bg-2)] transition-colors"
                 href="https://github.com/Swarmwage/swarmwage"
@@ -56,6 +60,14 @@ export function Hero() {
                 Read the spec <span aria-hidden="true">→</span>
               </a>
             </div>
+
+            <p className="mt-3 text-[11.5px] text-[var(--color-fg-muted-2)] leading-relaxed max-w-xl">
+              <span className="text-[var(--color-fg-muted)]">MCP</span>{" "}
+              plugs the marketplace into Claude Code / Desktop / Cursor / Cline
+              — your existing agent can buy services with no code.{" "}
+              <span className="text-[var(--color-fg-muted)]">SDK</span>{" "}
+              is for building a custom seller or a scripted buyer in TypeScript.
+            </p>
 
             {/* Tech-stack badge — descriptive complement to the live-on-mainnet
                 eyebrow above; restates the substrate without re-asserting status. */}
