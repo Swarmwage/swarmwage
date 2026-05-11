@@ -24,6 +24,7 @@ import {
 
 import { loadWallet } from "./config.js";
 import { VERSION, SETUP_URL } from "./constants.js";
+import { checkForUpdate } from "./update-check.js";
 
 // -------------------------------------------------------------------------
 // Tool definitions
@@ -444,4 +445,9 @@ export async function runServer(): Promise<void> {
         `  Setup wallet: npx @swarmwage/mcp\n`,
     );
   }
+
+  // Fire-and-forget update probe. The MCP loop above is already serving
+  // requests; this writes one stderr line if an update is available, then
+  // exits silently on any error or network slowness.
+  void checkForUpdate();
 }
