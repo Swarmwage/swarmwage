@@ -79,6 +79,15 @@ export function CTA() {
               vertical real estate matches the sidebar height. */}
           <div>
             <InstallTabs />
+            <p className="mt-3 text-xs text-[var(--color-fg-muted)] leading-relaxed">
+              Already installed an older version?{" "}
+              <code className="font-mono text-[var(--color-fg)]">
+                npx -y @swarmwage/mcp@latest --init
+              </code>{" "}
+              refreshes the binary and re-runs the wizard. The MCP also prints
+              a one-line "update available" notice in your host's stderr logs
+              when a new release ships.
+            </p>
           </div>
         </div>
       </div>
