@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/mcp",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "MCP server exposing the Swarmwage agent marketplace as tools for any MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, Cline, etc.)",
   "license": "MIT",
   "type": "module",
@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "@swarmwage/agent-sdk": "workspace:*",
+    "@swarmwage/agent-sdk": "workspace:^",
+    "viem": "^2.30.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
