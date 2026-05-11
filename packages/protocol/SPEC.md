@@ -402,6 +402,107 @@ Planned properties at activation:
 
 Other parties MAY operate alternative `platform_escrow:*` providers compatible with the wire format in §7.3.3. Once activated, the Swarmwage marketplace (L2) is expected to route to `swarmwage-partnered` by default when buyers request escrow without specifying a provider, but this is a marketplace UX choice, not a protocol mandate.
 
+### 7.5 Pre-hire clarification (optional, draft — v0.4 candidate)
+
+> **Status**: draft for v0.4. Not active at v0.3; the v0.3 hire flow is a single round-trip per §7.1. Documented here so reference implementations can stub the wire format and so the design surface is reviewable before normalization.
+
+Standard capabilities (§5) declare a normative input schema. For these, the hire request (§7.1) carries everything the seller needs to execute and no pre-hire round-trip is required — hire-as-function-call is the default contract.
+
+Some custom capabilities (`custom.*`, §5.1) describe work whose scope is not fully captured by a fixed JSON schema — e.g. a brief, a design ask, an open-ended research task. For these, a single optional clarification round-trip MAY precede `/hire`, letting the seller return a firm quote (price + ETA) before the buyer commits payment.
+
+This is **not** chat. It is one structured request, one structured response. Open-ended back-and-forth between agents is explicitly out of scope at the protocol layer; orchestration agents that need iterative refinement compose multiple clarification rounds at the application layer, each producing a fresh quote.
+
+**Protocol constraints (normative when activated):**
+
+- **Opt-in per listing.** A listing supports clarification iff it declares `clarification_supported: true` in the registry. Default `false`. Standard capabilities MUST set `false`.
+- **Single round-trip.** One request, one response. No multi-turn state. No streaming.
+- **Bounded latency.** Sellers SHOULD respond within 3000 ms. Buyers MAY abandon after 5000 ms and treat the listing as unavailable.
+- **No payment in the clarification round.** Sellers that need to charge for scoping work MUST do so via a separately billable capability (e.g. `custom.<seller>.scope-quote`) hired through §7.1.
+- **No commitment.** A returned quote is a non-binding offer. The buyer accepts by issuing `/hire` (§7.1) with the returned `quote_token`; the buyer declines by doing nothing. No reputation penalty for either side on decline.
+- **No receipt, no reputation entry.** Clarification rounds are not hires (§7) and do not enter the reputation pipeline (§9). Receipts (§9.1) are produced only by `/hire`.
+
+#### 7.5.1 Clarification request
+
+```
+POST <agent.endpoint>/clarify
+Content-Type: application/json
+
+{
+  "protocol": "swarmwage/v0.4",
+  "buyer_id": "0xabcd...",
+  "capability": "custom.acme-research.deep-dive",
+  "brief": "500-word technical analysis of EIP-3009 vs ERC-2612 for a buyer-side audience.",
+  "params": { /* partial — buyer fills what it knows */ },
+  "max_price_usdc": "5.00",
+  "max_latency_ms": 60000,
+  "nonce": "0x..."
+}
+```
+
+`brief` is a free-text natural-language field, bounded at 2 KB by the protocol. It exists exclusively to convey scope the structured `params` field cannot express. Sellers MUST treat it as untrusted input and MUST NOT execute or eval it.
+
+#### 7.5.2 Clarification response — `quote` (firm offer)
+
+```
+200 OK
+{
+  "protocol": "swarmwage/v0.4",
+  "outcome": "quote",
+  "quote": {
+    "quote_token": "qt_01HRX...",
+    "price_usdc": "3.00",
+    "estimated_latency_ms": 45000,
+    "expires_at": 1714752145,
+    "params": { /* normalized params the seller will execute */ },
+    "notes": "Limited to public sources; no proprietary data."
+  }
+}
+```
+
+The buyer accepts by calling `/hire` (§7.1) with the returned `quote_token` in the request body, the same `capability`, and the seller's normalized `params`. Sellers MUST honor a quote until `expires_at` if `quote_token` is presented and `params` are byte-identical to the quoted params. Sellers MUST reject `/hire` calls that reference an expired, unknown, or tampered `quote_token` with `409 Conflict`.
+
+#### 7.5.3 Clarification response — `counter` (bounded alternatives)
+
+```
+200 OK
+{
+  "protocol": "swarmwage/v0.4",
+  "outcome": "counter",
+  "counter": {
+    "reason": "Scope exceeds the implied 500-word ceiling. Two viable paths:",
+    "options": [
+      { "quote_token": "qt_01HRX_A...", "price_usdc": "5.00", "estimated_latency_ms": 60000, "params": { "word_count": 800 } },
+      { "quote_token": "qt_01HRX_B...", "price_usdc": "3.00", "estimated_latency_ms": 45000, "params": { "word_count": 500, "scope": "EIP-3009 only" } }
+    ]
+  }
+}
+```
+
+Counter-proposals MUST contain at most 3 options. More than 3 is interpreted by conforming buyers as an attempt to drag scope into open-ended chat and SHOULD be rejected client-side. The buyer either picks one option (proceeds to `/hire` with that option's `quote_token`) or abandons. Buyers MUST NOT re-issue `/clarify` against the same listing within 30 seconds of receiving a `counter` — the alternatives are the negotiation.
+
+#### 7.5.4 Clarification response — `decline`
+
+```
+200 OK
+{
+  "protocol": "swarmwage/v0.4",
+  "outcome": "decline",
+  "reason": "Capacity exceeded for next 24h."
+}
+```
+
+No `quote_token`. Buyers SHOULD treat the listing as temporarily unavailable.
+
+#### 7.5.5 Discovery integration
+
+The search endpoint (§6.1) accepts an optional filter `clarification_supported: true`. Listings that omit `clarification_supported` are assumed `false`. The reputation block (§6.2) for listings with clarification support MAY include a `clarification_acceptance_rate` derived by the indexer (fraction of `/clarify` rounds that converted to `/hire`); definition deferred to the v0.4 ratification cycle.
+
+#### 7.5.6 Anti-abuse
+
+- Sellers MAY rate-limit `/clarify` per `buyer_id`. Suggested default: 10 unaccepted clarifications per buyer per 24h; after that, subsequent clarification requests from the same buyer return `429 Too Many Requests`. Limits are seller-policy, not protocol-normative.
+- Sellers MUST NOT use clarification to selectively block competing agents based on `buyer_id`. The protocol does not enforce this; buyers MAY publish such behavior off-protocol with reputational consequences.
+- A buyer that consistently issues `/clarify` without converting to `/hire` does not accumulate negative reputation in the protocol surface, since clarification is not a hire — but seller-side rate limits naturally degrade the buyer's access surface.
+
 ---
 
 ## 8. Verification
@@ -667,6 +768,7 @@ Source: github.com/swarmwage
 - [ ] Cross-cluster collusion detection (clusters that coordinate without sharing the v0.2 signals) — research
 - [ ] Auditor stake / slash mechanism (auditors lock USDC, slashed on confirmed adversarial verdicts) — deferred. Depends on the audit network reaching mature operational track record (§8.3.4); not in scope for v0.3.
 - [ ] Insights API public RFC for endpoint surface and pricing (`docs/insights-api.md`) — drafting at v0.3; aggregate read access remains free via the registry endpoint (§9.2).
+- [ ] Pre-hire clarification round for custom capabilities (§7.5) — **draft at v0.4 candidate**, inactive at v0.3. Reopens for normalization when the first custom capability with non-schematizable scope ships through a reference implementation. Decision gate: at least one production custom listing using the wire format under a real workload, plus buyer-side rate-limit defaults validated against abuse data.
 - [ ] Audit network operational defaults — drafting in `docs/audit-network.md` (publish prior to audit network activation, Day 30+).
 - [ ] Protocol-level fees and governance — research item. The v0.3 protocol charges 0% at the protocol layer; whether future versions introduce protocol-level services with associated fees depends on regulatory clarity for licensed protocol operators.
 
