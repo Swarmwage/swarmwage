@@ -27,6 +27,84 @@ import type { ReceiptRecord, RegistryStore } from "./store/types.js";
 import { verifyTypedPayload } from "./auth.js";
 import { WebhookDispatcher } from "./webhooks.js";
 
+/**
+ * Returns a non-null human-readable reason when the given endpoint URL points
+ * to a host the registry must NOT accept as a public seller endpoint, or null
+ * when the URL passes. Closes the SSRF surface a malicious seller would
+ * otherwise have by publishing a listing whose endpoint is a loopback /
+ * private / cloud-metadata address — the moment a buyer hires that listing,
+ * the buyer SDK fetches the URL from inside the buyer's network and exposes
+ * services (IMDS credentials, internal admin panels) that only the buyer
+ * itself can reach. We block at publish-time so the listing never appears in
+ * search results.
+ */
+function blockedEndpointReason(endpoint: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    return "endpoint is not a valid URL";
+  }
+  if (parsed.username !== "" || parsed.password !== "") {
+    return "endpoint must not contain userinfo (user:pass@host)";
+  }
+  const raw = parsed.hostname.toLowerCase();
+  // IPv6 hostnames arrive bracketed in `URL.hostname` — strip for matching.
+  const host =
+    raw.startsWith("[") && raw.endsWith("]") ? raw.slice(1, -1) : raw;
+  if (
+    host === "localhost" ||
+    host === "localhost.localdomain" ||
+    host === "ip6-localhost" ||
+    host === "ip6-loopback" ||
+    host === "::1" ||
+    host === "0.0.0.0"
+  ) {
+    return "endpoint hostname is loopback / localhost";
+  }
+  if (
+    host === "metadata.google.internal" ||
+    host === "metadata.azure.com" ||
+    host === "instance-data" ||
+    host === "instance-data.ec2.internal" ||
+    host.endsWith(".internal")
+  ) {
+    return "endpoint hostname is a known cloud metadata service";
+  }
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const a = Number(ipv4[1]);
+    const b = Number(ipv4[2]);
+    if ([a, b, Number(ipv4[3]), Number(ipv4[4])].some((n) => n < 0 || n > 255)) {
+      return "endpoint IP literal is malformed";
+    }
+    // 10.0.0.0/8 private
+    if (a === 10) return "endpoint IP is in private range 10.0.0.0/8";
+    // 172.16.0.0/12 private
+    if (a === 172 && b >= 16 && b <= 31)
+      return "endpoint IP is in private range 172.16.0.0/12";
+    // 192.168.0.0/16 private
+    if (a === 192 && b === 168)
+      return "endpoint IP is in private range 192.168.0.0/16";
+    // 127.0.0.0/8 loopback
+    if (a === 127) return "endpoint IP is loopback (127.0.0.0/8)";
+    // 169.254.0.0/16 link-local — AWS/GCP/Azure IMDS lives here
+    if (a === 169 && b === 254)
+      return "endpoint IP is link-local (169.254.0.0/16) — cloud metadata";
+    // 0.0.0.0/8 "this network", multicast, class E reserved
+    if (a === 0) return "endpoint IP is in 0.0.0.0/8";
+    if (a >= 224) return "endpoint IP is multicast or reserved (>=224.0.0.0)";
+  }
+  // IPv6 ULA fc00::/7 + link-local fe80::/10 (lowercase already)
+  if (/^f[cd][0-9a-f]{0,2}:/.test(host)) {
+    return "endpoint IPv6 is in ULA range fc00::/7";
+  }
+  if (host.startsWith("fe80:") || host.startsWith("fe90:") || host.startsWith("fea0:") || host.startsWith("feb0:")) {
+    return "endpoint IPv6 is link-local fe80::/10";
+  }
+  return null;
+}
+
 export interface CreateAppOptions {
   store?: RegistryStore;
   /** When false, the HTTP request logger middleware is skipped (test noise). */
@@ -214,18 +292,33 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       .min(3)
       .max(128)
       .regex(/^[a-z][a-z0-9._-]*$/),
-    price_usdc: z.string().regex(/^\d+(\.\d+)?$/),
+    // USDC on-chain has 6 decimal places, so anything past the 6th digit
+    // would be silently rounded by the token contract — a seller listing
+    // 0.0000001 USDC would settle 0 on-chain. Also forbid zero: listings
+    // priced at 0 are perma-free spam (use `first_call_free` for the
+    // legitimate first-call-free affordance, on top of a non-zero price).
+    price_usdc: z
+      .string()
+      .regex(/^\d+(\.\d{1,6})?$/, "price has at most 6 decimal places (USDC precision)")
+      .refine((v) => parseFloat(v) > 0, {
+        message: "price must be > 0; use first_call_free for free-tier",
+      }),
     currency: z.literal("USDC").default("USDC"),
     chain: z.literal("base").default("base"),
     max_latency_ms: z.number().int().positive(),
     first_call_free: z.boolean().default(false),
-    // HTTPS-only. Plain http:// endpoints would let an in-path attacker
-    // intercept the EIP-3009 payment authorization headers.
+    // HTTPS-only + no SSRF. Plain http:// would let an in-path attacker
+    // intercept EIP-3009 payment authorization headers; endpoints pointing
+    // at loopback / private / cloud-metadata addresses would let a malicious
+    // seller proxy buyer-side SSRF attacks (see blockedEndpointReason).
     endpoint: z
       .string()
       .url()
       .refine((u) => u.startsWith("https://"), {
         message: "endpoint must use HTTPS",
+      })
+      .refine((u) => blockedEndpointReason(u) === null, {
+        message: "endpoint hostname is loopback, private, or cloud-metadata",
       }),
     signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
   });
@@ -499,6 +592,23 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     if (!parsed.success) {
       return c.json(
         { ok: false, error: "Invalid receipt", issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    // Self-hire / wash-trading block: a seller may not submit a receipt
+    // claiming they served themselves. Otherwise a single wallet could
+    // inflate its own last_30d_hire_count and reputation by hiring itself
+    // (transferWithAuthorization buyer→seller with the same address is a
+    // no-op on the USDC contract — zero economic cost, full reputation gain).
+    if (
+      parsed.data.agent_id.toLowerCase() === parsed.data.buyer.toLowerCase()
+    ) {
+      return c.json(
+        {
+          ok: false,
+          error: "Self-hire is not allowed: buyer and agent_id must differ",
+        },
         400,
       );
     }
