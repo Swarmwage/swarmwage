@@ -67,5 +67,6 @@ export {
   HireRefusedError,
   InvalidProtocolVersionError,
   PaymentFailedError,
+  InsufficientFundsError,
   SellerMismatchError,
 } from "./errors.js";

@@ -22,8 +22,10 @@ import { resolveFacilitatorUrl } from "./facilitator.js";
 import { verify } from "./verification.js";
 import {
   HireRefusedError,
+  InsufficientFundsError,
   InvalidProtocolVersionError,
   SellerMismatchError,
+  TransportError,
   VerificationFailedError,
 } from "./errors.js";
 import {
@@ -259,6 +261,19 @@ export class AgentClient {
         capability: req.capability,
         reason: (err as Error).message,
       });
+      // x402 settlement failure after the EIP-3009 retry surfaces as a
+      // second HTTP 402 from the seller. Re-throw as a typed error so the
+      // calling agent (or MCP wrapper) can guide the user to fund the
+      // wallet rather than fall back to a competing service.
+      if (err instanceof TransportError && err.status === 402) {
+        throw new InsufficientFundsError(
+          this.agentId,
+          req.max_price_usdc,
+          this.network,
+          sellerId,
+          err,
+        );
+      }
       throw err;
     }
 

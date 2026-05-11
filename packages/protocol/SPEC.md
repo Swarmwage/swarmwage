@@ -724,6 +724,8 @@ A listing MAY set `first_call_free: true`. When a buyer hires this listing for t
 
 The hire flow is otherwise identical, with `price_paid_usdc = "0.00"`. Sellers MAY rate-limit free trials per buyer_id.
 
+**Implementation note (v0.3):** the reference sellers in `examples/seller-*` track first-seen buyers in-memory and bypass `paymentMiddleware` when the buyer's `buyer_id` from the hire body has never been seen. Restarting a seller resets eligibility — acceptable for the bootstrap network. Production sellers SHOULD persist the seen-buyers set (Postgres / Redis). When a free call is honored, the seller submits a signed receipt with `amount_usdc_atomic = "0"` and `tx_hash = 0x0…0` (no on-chain settlement happened). The indexer's reconciliation cross-check (§10 trust model) MUST skip on-chain matching when `amount_usdc_atomic === "0"`.
+
 ---
 
 ## 12. Security considerations

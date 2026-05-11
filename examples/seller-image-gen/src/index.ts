@@ -25,6 +25,7 @@ import {
 } from "@swarmwage/agent-sdk";
 import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
 import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
+import { firstCallFreeGate, inMemoryTracker } from "./first-call-free.js";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -212,7 +213,11 @@ type Variables = {
   pendingReceipt?: {
     payload: Parameters<typeof submitReceipt>[0]["payload"];
   };
+  freeCall?: boolean;
+  freeCallBuyerId?: string;
 };
+
+const firstCallTracker = inMemoryTracker();
 const app = new Hono<{ Variables: Variables }>();
 
 app.get("/", (c) =>
@@ -273,17 +278,25 @@ app.use("/hire", async (c, next) => {
 // the middleware verifies + settles via the configured facilitator, then
 // hands control to the handler below. Settlement tx hash is exposed via
 // the X-PAYMENT-RESPONSE header that the middleware sets on the response.
-app.use(
-  paymentMiddleware(
-    account.address,
-    {
-      "POST /hire": {
-        price: `$${PRICE_USDC}`,
-        network: NETWORK,
-      },
+//
+// Wrapped by `firstCallFreeGate` so a buyer's first-ever hire against this
+// seller bypasses payment entirely (SPEC §11 — listing advertises
+// first_call_free: true). The gate parses buyer_id once; Hono caches the
+// JSON body so the /hire handler re-reads it transparently.
+const pmw = paymentMiddleware(
+  account.address,
+  {
+    "POST /hire": {
+      price: `$${PRICE_USDC}`,
+      network: NETWORK,
     },
-    { url: FACILITATOR_URL },
-  ),
+  },
+  { url: FACILITATOR_URL },
+);
+
+app.use(
+  "/hire",
+  firstCallFreeGate({ paymentMiddleware: pmw, tracker: firstCallTracker }),
 );
 
 app.post("/hire", async (c) => {
@@ -325,11 +338,26 @@ app.post("/hire", async (c) => {
   const latency = Date.now() - t0;
   const receiptId = `rcpt_${crypto.randomUUID()}`;
   const ratingToken = `rtt_${crypto.randomUUID()}`;
+  const freeCall = c.get("freeCall") === true;
+  const pricePaid = freeCall ? "0.00" : PRICE_USDC;
+
+  // Commit the free-call consumption AFTER successful generation, so a
+  // backend 5xx (caught above and returned as 502) does not silently burn
+  // the buyer's single free trial.
+  if (freeCall) {
+    const buyerKey = c.get("freeCallBuyerId");
+    if (buyerKey) firstCallTracker.markSeen(buyerKey);
+  }
 
   // x402-hono attaches X-PAYMENT-RESPONSE on the response only AFTER this
   // handler returns. We ship tx_hash=0x0…0 here and the @swarmwage/agent-sdk
   // client patches it from the response header on its side. The signed
   // receipt is submitted by the post-hook middleware mounted above.
+  //
+  // For freeCall hires no on-chain settlement happens — tx_hash stays
+  // zeroed and amount_usdc_atomic is "0". The indexer's planned
+  // reconciliation job (registry/src/app.ts §receipts trust model) MUST
+  // skip cross-check when amount_usdc_atomic === "0".
   const ZERO_HASH =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -352,7 +380,7 @@ app.post("/hire", async (c) => {
         (body.buyer_id?.toLowerCase() as AgentId) ??
         ("0x0000000000000000000000000000000000000000" as AgentId),
       capability: body.capability ?? "image.generate.photorealistic.png",
-      amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
+      amount_usdc_atomic: freeCall ? "0" : priceUsdcToAtomic(PRICE_USDC),
       network: NETWORK as "base" | "base-sepolia",
       tx_hash: ZERO_HASH as `0x${string}`,
       completed_at: new Date(completedAt * 1000).toISOString(),
@@ -373,13 +401,14 @@ app.post("/hire", async (c) => {
       seller_id: agentId,
       capability: body.capability,
       tx_hash: ZERO_HASH,
-      price_paid_usdc: PRICE_USDC,
+      price_paid_usdc: pricePaid,
       completed_at: completedAt,
+      first_call_free: freeCall,
     },
     result,
     verification,
     rating_token: ratingToken,
-    _meta: { latency_ms: latency },
+    _meta: { latency_ms: latency, first_call_free: freeCall },
   });
 });
 

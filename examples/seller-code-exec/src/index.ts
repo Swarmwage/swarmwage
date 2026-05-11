@@ -35,6 +35,7 @@ import {
 } from "@swarmwage/agent-sdk";
 import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
 import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
+import { firstCallFreeGate, inMemoryTracker } from "./first-call-free.js";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -286,7 +287,10 @@ type Variables = {
   pendingReceipt?: {
     payload: Parameters<typeof submitReceipt>[0]["payload"];
   };
+  freeCall?: boolean;
+  freeCallBuyerId?: string;
 };
+const firstCallTracker = inMemoryTracker();
 const app = new Hono<{ Variables: Variables }>();
 
 app.get("/", (c) =>
@@ -359,17 +363,22 @@ app.use("/hire", async (c, next) => {
   });
 });
 
-app.use(
-  paymentMiddleware(
-    account.address,
-    {
-      "POST /hire": {
-        price: `$${PRICE_USDC}`,
-        network: NETWORK,
-      },
+// Wrapped by `firstCallFreeGate` so a buyer's first-ever hire against this
+// seller bypasses payment (SPEC §11 — listing advertises first_call_free).
+const pmw = paymentMiddleware(
+  account.address,
+  {
+    "POST /hire": {
+      price: `$${PRICE_USDC}`,
+      network: NETWORK,
     },
-    { url: FACILITATOR_URL },
-  ),
+  },
+  { url: FACILITATOR_URL },
+);
+
+app.use(
+  "/hire",
+  firstCallFreeGate({ paymentMiddleware: pmw, tracker: firstCallTracker }),
 );
 
 app.post("/hire", async (c) => {
@@ -430,6 +439,14 @@ app.post("/hire", async (c) => {
   const latency = Date.now() - t0;
   const receiptId = `rcpt_${crypto.randomUUID()}`;
   const ratingToken = `rtt_${crypto.randomUUID()}`;
+  const freeCall = c.get("freeCall") === true;
+  const pricePaid = freeCall ? "0.00" : PRICE_USDC;
+
+  // Commit free-call consumption only after a successful execution.
+  if (freeCall) {
+    const buyerKey = c.get("freeCallBuyerId");
+    if (buyerKey) firstCallTracker.markSeen(buyerKey);
+  }
 
   // x402-hono attaches X-PAYMENT-RESPONSE on the response only AFTER this
   // handler returns. We ship tx_hash=0x0…0 here and the @swarmwage/agent-sdk
@@ -458,7 +475,7 @@ app.post("/hire", async (c) => {
         (body.buyer_id?.toLowerCase() as AgentId) ??
         ("0x0000000000000000000000000000000000000000" as AgentId),
       capability: body.capability ?? "code.execute.sandboxed",
-      amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
+      amount_usdc_atomic: freeCall ? "0" : priceUsdcToAtomic(PRICE_USDC),
       network: NETWORK as "base" | "base-sepolia",
       tx_hash: ZERO_HASH as `0x${string}`,
       completed_at: new Date(completedAt * 1000).toISOString(),
@@ -479,13 +496,14 @@ app.post("/hire", async (c) => {
       seller_id: agentId,
       capability: body.capability,
       tx_hash: ZERO_HASH,
-      price_paid_usdc: PRICE_USDC,
+      price_paid_usdc: pricePaid,
       completed_at: completedAt,
+      first_call_free: freeCall,
     },
     result,
     verification,
     rating_token: ratingToken,
-    _meta: { latency_ms: latency },
+    _meta: { latency_ms: latency, first_call_free: freeCall },
   });
 });
 

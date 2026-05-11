@@ -78,6 +78,35 @@ export class PaymentFailedError extends SwarmwageError {
 }
 
 /**
+ * Raised when an x402 hire ultimately fails settlement — typically because
+ * the buyer's wallet does not hold enough USDC on the target chain. The
+ * facilitator signs nothing it cannot settle, so this error reaches the
+ * SDK as a second 402 after the EIP-3009 retry attempt.
+ *
+ * Carries the actionable bits a calling agent (or a wrapping MCP server)
+ * needs to guide the user to fund their wallet — `agent_id` (deposit
+ * address), `required_usdc`, and `chain` — instead of falling back to a
+ * competing service.
+ */
+export class InsufficientFundsError extends SwarmwageError {
+  constructor(
+    public readonly agent_id: string,
+    public readonly required_usdc: string,
+    public readonly chain: "base" | "base-sepolia",
+    public readonly seller_id?: string,
+    cause?: unknown,
+  ) {
+    super(
+      "INSUFFICIENT_FUNDS",
+      `Hire failed: wallet ${agent_id} cannot settle ${required_usdc} USDC on ${chain}. ` +
+        `Fund the wallet at https://www.coinbase.com/ or any USDC-on-${chain} on-ramp, then retry the same hire.`,
+      cause,
+    );
+    this.name = "InsufficientFundsError";
+  }
+}
+
+/**
  * Raised when the seller's x402 challenge demands payment to an address that
  * does not match the agent_id the buyer intended to hire.
  *
