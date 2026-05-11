@@ -334,7 +334,12 @@ async function publishListing(): Promise<void> {
 // HTTP server
 // -------------------------------------------------------------------------
 
-const app = new Hono();
+type Variables = {
+  pendingReceipt?: {
+    payload: Parameters<typeof submitReceipt>[0]["payload"];
+  };
+};
+const app = new Hono<{ Variables: Variables }>();
 
 app.get("/", (c) =>
   c.json({
@@ -358,6 +363,37 @@ app.use("/hire", rateLimit(hireIpLimiter, clientIp));
 // upstream spend cap is hit. Mounted before paymentMiddleware so the buyer
 // is never charged USDC for a call we cannot fulfil.
 app.use("/hire", dailyBudgetGuard(dailyBudget, EST_UPSTREAM_USD_PER_CALL));
+
+// Receipt-submission post-hook. Mounted BEFORE paymentMiddleware so its
+// post-await(next) phase runs AFTER paymentMiddleware has attached the
+// X-PAYMENT-RESPONSE header (which carries the real settlement tx_hash).
+// The /hire handler stashes the receipt payload via c.set("pendingReceipt").
+app.use("/hire", async (c, next) => {
+  await next();
+  const pending = c.get("pendingReceipt") as
+    | { payload: Parameters<typeof submitReceipt>[0]["payload"] }
+    | undefined;
+  if (!pending) return;
+  if (c.res.status >= 400) return;
+  let txHash =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
+  if (paymentResponseHeader) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
+      ) as { transaction?: string; txHash?: string };
+      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
+    } catch {
+      // header malformed — keep placeholder
+    }
+  }
+  void submitReceipt({
+    registryUrl: REGISTRY_URL,
+    sellerPrivateKey: PRIVATE_KEY,
+    payload: { ...pending.payload, tx_hash: txHash as `0x${string}` },
+  });
+});
 
 app.use(
   paymentMiddleware(
@@ -461,25 +497,16 @@ app.post("/hire", async (c) => {
   const receiptId = `rcpt_${crypto.randomUUID()}`;
   const ratingToken = `rtt_${crypto.randomUUID()}`;
 
-  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
-  let txHash =
+  // x402-hono attaches X-PAYMENT-RESPONSE on the response only AFTER this
+  // handler returns. We ship tx_hash=0x0…0 here and the @swarmwage/agent-sdk
+  // client patches it from the response header on its side. The signed
+  // receipt is submitted by the post-hook middleware mounted above.
+  const ZERO_HASH =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
-  if (paymentResponseHeader) {
-    try {
-      const decoded = JSON.parse(
-        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
-      ) as { transaction?: string; txHash?: string };
-      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
-    } catch {
-      // header malformed — keep placeholder
-    }
-  }
 
-  // Layer 3 data capture: submit a signed receipt to the canonical
-  // registry. Fire-and-forget. Opt out with SWARMWAGE_RECEIPTS=0.
-  void submitReceipt({
-    registryUrl: REGISTRY_URL,
-    sellerPrivateKey: PRIVATE_KEY,
+  // Stash the receipt payload (without tx_hash) for the post-hook to pick up
+  // and submit once X-PAYMENT-RESPONSE is attached to the response.
+  c.set("pendingReceipt", {
     payload: {
       protocol_version: PROTOCOL_VERSION,
       hire_id: receiptId,
@@ -490,7 +517,7 @@ app.post("/hire", async (c) => {
       capability: body.capability ?? "audio.transcribe.json-with-timestamps",
       amount_usdc_atomic: priceUsdcToAtomic(PRICE_USDC),
       network: NETWORK as "base" | "base-sepolia",
-      tx_hash: txHash as `0x${string}`,
+      tx_hash: ZERO_HASH as `0x${string}`,
       completed_at: new Date(completedAt * 1000).toISOString(),
       verification: {
         all_passed: verification.all_passed,
@@ -508,7 +535,7 @@ app.post("/hire", async (c) => {
       buyer_id: body.buyer_id ?? "0x0000000000000000000000000000000000000000",
       seller_id: agentId,
       capability: body.capability,
-      tx_hash: txHash,
+      tx_hash: ZERO_HASH,
       price_paid_usdc: PRICE_USDC,
       completed_at: completedAt,
     },
