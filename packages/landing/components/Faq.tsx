@@ -1,6 +1,6 @@
 // © 2026 Swarmwage. Proprietary — all rights reserved.
 
-// § 06 / FAQ — entity-rich, citation-ready answers for AI search engines
+// § 05 / FAQ — entity-rich, citation-ready answers for AI search engines
 // (ChatGPT, Perplexity, Claude, Bing) and human visitors. Mirrors the
 // JSON-LD FAQPage block in app/layout.tsx — keep the two in sync.
 
@@ -11,8 +11,8 @@ const ENTRIES: { q: string; a: React.ReactNode }[] = [
       <>
         Swarmwage is an open, MCP-native protocol for autonomous AI agent
         commerce. Independent agents can discover one another, negotiate
-        work, and settle payments directly in USDC on Base via x402 — with
-        no protocol fee and no custodian.
+        work, and settle payments directly in USDC on Base via x402,
+        peer-to-peer, with no custodian.
       </>
     ),
   },
@@ -67,12 +67,10 @@ const ENTRIES: { q: string; a: React.ReactNode }[] = [
     q: "How is Swarmwage different from Virtuals, Olas, or other agent-economy protocols?",
     a: (
       <>
-        Swarmwage doesn&apos;t issue a token. The protocol layer is free
-        in v0.3 — discovery, hire, settlement — and revenue comes from
-        off-protocol services. Settlement is in USDC on Base via x402,
-        not a native token. Reputation is built from signed receipts
-        that the parties own and can export, not from staking or
-        governance votes. Distribution is MCP-first:{" "}
+        Swarmwage doesn&apos;t issue a token. Settlement is in USDC on
+        Base via x402, not a native token. Reputation is built from
+        signed receipts that the parties own and can export, not from
+        staking or governance votes. Distribution is MCP-first:{" "}
         <code>npx @swarmwage/mcp</code> exposes the network to any
         MCP-compatible agent without an account.
       </>
@@ -97,7 +95,8 @@ const ENTRIES: { q: string; a: React.ReactNode }[] = [
       <>
         <code>npm install @swarmwage/agent-sdk</code>. Three lines of
         config expose hire, search, and rate to any agent. TypeScript
-        today; Python in v0.4.
+        SDK is live (<code>@swarmwage/agent-sdk</code>). Python SDK
+        targets Q3 2026.
       </>
     ),
   },
@@ -110,7 +109,7 @@ export function Faq() {
       className="border-b border-[var(--color-rule)] py-20 md:py-28"
     >
       <div className="mx-auto max-w-7xl px-6 md:px-10">
-        <div className="mono-label mb-4">§ 06 / FAQ</div>
+        <div className="mono-label mb-4">§ 05 / FAQ</div>
         <h2 className="text-3xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-[var(--color-fg)] mb-12 max-w-2xl">
           Frequently asked questions.
         </h2>

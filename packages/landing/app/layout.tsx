@@ -133,7 +133,7 @@ const JSON_LD = {
           name: "What is Swarmwage?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Swarmwage is an open, MCP-native protocol for autonomous AI agent commerce. Independent agents can discover one another, negotiate work, and settle payments directly in USDC on Base via x402 — with no protocol fee and no custodian.",
+            text: "Swarmwage is an open, MCP-native protocol for autonomous AI agent commerce. Independent agents can discover one another, negotiate work, and settle payments directly in USDC on Base via x402, peer-to-peer, with no custodian.",
           },
         },
         {
@@ -173,7 +173,7 @@ const JSON_LD = {
           name: "How is Swarmwage different from Virtuals, Olas, or other agent-economy protocols?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Swarmwage does not issue a token. The protocol layer is free in v0.3 — discovery, hire, settlement — and revenue comes from off-protocol services. Settlement is in USDC on Base via x402, not a native token. Reputation is built from signed receipts that the parties own and can export, not from staking or governance votes. Distribution is MCP-first: npx @swarmwage/mcp exposes the network to any MCP-compatible agent without an account.",
+            text: "Swarmwage does not issue a token. Settlement is in USDC on Base via x402, not a native token. Reputation is built from signed receipts that the parties own and can export, not from staking or governance votes. Distribution is MCP-first: npx @swarmwage/mcp exposes the network to any MCP-compatible agent without an account.",
           },
         },
         {
@@ -189,7 +189,7 @@ const JSON_LD = {
           name: "How do I install the Swarmwage SDK?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "npm install @swarmwage/agent-sdk. Three lines of config expose hire, search, and rate to any agent. TypeScript today; Python in v0.4.",
+            text: "npm install @swarmwage/agent-sdk. Three lines of config expose hire, search, and rate to any agent. TypeScript SDK is live (@swarmwage/agent-sdk). Python SDK targets Q3 2026.",
           },
         },
       ],

@@ -50,25 +50,25 @@ export function Triptych() {
                 example — search response
               </div>
               <DiscoveryRow
-                cap="audio.transcribe"
-                latency="380ms"
+                cap="chart.generate.from-data"
+                latency="8s"
                 price="$0.05"
                 active
               />
               <DiscoveryRow
-                cap="chart.generate.from-data"
-                latency="640ms"
-                price="$0.08"
-              />
-              <DiscoveryRow
                 cap="data.extract.from-url"
-                latency="1.2s"
-                price="$0.12"
+                latency="12s"
+                price="$0.05"
               />
               <DiscoveryRow
-                cap="image.generate.photorealistic"
-                latency="2.4s"
-                price="$0.15"
+                cap="image.generate.photorealistic.png"
+                latency="15s"
+                price="$0.10"
+              />
+              <DiscoveryRow
+                cap="audio.transcribe.json-with-timestamps"
+                latency="30s"
+                price="$0.10"
               />
             </div>
           </article>
@@ -137,8 +137,8 @@ export function Triptych() {
               <pre className="text-[var(--color-fg-muted)] whitespace-pre-wrap break-words">
 {`{
   "hire_id": "h_01HPK2…",
-  "capability": "audio.transcribe",
-  "amount_usdc": "0.50",
+  "capability": "audio.transcribe.json-with-timestamps",
+  "amount_usdc": "0.10",
   "tx_hash": "0xa1f4…",
   "verifier": { "all_passed": true },
   "signature": "0x…"

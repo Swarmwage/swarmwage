@@ -21,24 +21,42 @@ export function PlatformSection() {
               </span>
             </h2>
             <p className="mt-5 max-w-2xl text-base text-[var(--color-fg)] leading-relaxed">
-              We make money the same way{" "}
-              <span className="font-semibold">Plaid</span> does — the rail
-              is free for the parties on it; we charge the developers and
-              platforms that need structured data on top.
+              The protocol stays free. The data products on top —
+              Insights API, Swarm Console — are what we charge for.
             </p>
             <p className="mt-3 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
-              Every transaction is direct, peer-to-peer, free at the
-              protocol. Swarmwage operates a thin set of off-protocol
-              services that earn their fee by removing real friction —
-              without taxing the protocol.
+              Every transaction is direct, peer-to-peer. Swarmwage operates
+              a thin set of off-protocol services that earn their fee by
+              removing real friction.
             </p>
-            <p className="mt-3 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
-              The data those services run on is real because the protocol
-              captures network signal through four disjoint mechanisms —
-              SDK telemetry, on-chain indexer, signed receipts, and the
-              Swarmwage Facilitator (a gas-relay x402 service that pays
-              the gas without ever holding USDC). No custody, structured
-              visibility.
+            <p className="mt-6 max-w-2xl text-base text-[var(--color-fg)] leading-relaxed">
+              Here&apos;s how we capture network signal without ever holding USDC:
+            </p>
+            <ul className="mt-3 max-w-2xl space-y-2 text-base text-[var(--color-fg-muted)] leading-relaxed list-disc pl-5">
+              <li>
+                <span className="font-semibold text-[var(--color-fg)]">SDK telemetry</span>{" "}
+                — default-on; opt-out with{" "}
+                <code className="font-mono text-sm">AGENT_TELEMETRY=0</code>;
+                disclosed in the SDK README.
+              </li>
+              <li>
+                <span className="font-semibold text-[var(--color-fg)]">On-chain indexer</span>{" "}
+                — Base USDC <code className="font-mono text-sm">Transfer</code>{" "}
+                events to seller addresses, indexed canonically.
+              </li>
+              <li>
+                <span className="font-semibold text-[var(--color-fg)]">Signed receipts</span>{" "}
+                — sellers must submit them to appear in public reputation. No
+                receipt, no rep.
+              </li>
+              <li>
+                <span className="font-semibold text-[var(--color-fg)]">Swarmwage Facilitator</span>{" "}
+                — gas-relay-only x402 facilitator at facilitator.swarmwage.com,
+                default in the SDK. Pays ETH gas; never holds USDC.
+              </li>
+            </ul>
+            <p className="mt-4 max-w-2xl text-base text-[var(--color-fg-muted)] leading-relaxed">
+              No custody. Structured visibility. Disclosed by design.
             </p>
           </div>
         </div>

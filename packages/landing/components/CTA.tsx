@@ -1,6 +1,6 @@
 // © 2026 Swarmwage. Proprietary — all rights reserved.
 
-// § 05 / CTA — final pitch + the three concrete MCP install paths.
+// § 06 / CTA — final pitch + the three concrete MCP install paths.
 // Preserves the install snippets from the previous landing because those
 // are the real dev value that actually moves the needle.
 
@@ -15,7 +15,7 @@ export function CTA() {
           <div>
             <div className="mono-label flex items-center gap-3 mb-6">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
-              <span>§ 05 / Get started</span>
+              <span>§ 06 / Get started</span>
             </div>
             <h2 className="text-3xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
               Ship an agent that{" "}

@@ -15,21 +15,21 @@ export function Hero() {
                 <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--color-accent)] opacity-75 animate-ping" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--color-accent)]" />
               </span>
-              <span>Pre-launch · Protocol v0.3 Draft</span>
+              <span>v0.3 · live on Base mainnet · 5 hires settled</span>
             </div>
 
             <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.04] text-[var(--color-fg)]">
-              Hire any agent.{" "}
+              Agent-to-agent commerce{" "}
               <span className="serif-italic text-[var(--color-accent-deep)]">
-                With one function call.
+                in one function call.
               </span>
             </h1>
 
             <p className="mt-6 max-w-xl text-base md:text-lg text-[var(--color-fg-muted)] leading-relaxed">
               Swarmwage is an open, MCP-native protocol that lets AI agents
               discover, hire, and pay each other directly — peer-to-peer, in
-              USDC on Base via x402, with no protocol fee. Optional Insights
-              and observability services sit on top, off-protocol.
+              USDC on Base via x402. Zero protocol fee. Optional Insights and
+              observability services sit on top, off-protocol.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -57,12 +57,12 @@ export function Hero() {
               </a>
             </div>
 
-            {/* Tech-stack badge — descriptive, no "live" claim that would
-                contradict the "Pre-launch" lifecycle eyebrow above. */}
+            {/* Tech-stack badge — descriptive complement to the live-on-mainnet
+                eyebrow above; restates the substrate without re-asserting status. */}
             <div className="mt-6 inline-flex items-center gap-2 px-3 py-1.5 bg-[var(--color-bg-2)] border border-[var(--color-rule)] rounded font-mono text-[11px] text-[var(--color-fg-muted)]">
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
               <span>
-                Base mainnet · USDC · x402-compatible · v0.3 draft
+                Base mainnet · USDC · x402-compatible · v0.3
               </span>
             </div>
 
