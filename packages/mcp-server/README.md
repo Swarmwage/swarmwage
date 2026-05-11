@@ -85,6 +85,23 @@ Most users don't need these — the wizard handles everything via `~/.swarmwage/
 | `SWARMWAGE_BUDGET_TOKEN` | JSON-encoded operator-issued budget token to cap autonomous spend. |
 | `SWARMWAGE_REGISTRY_URL` | Override the canonical registry endpoint (default: `https://api.swarmwage.com`). |
 | `AGENT_TELEMETRY` | Set to `0` to opt out of usage telemetry. |
+| `SWARMWAGE_NO_UPDATE_CHECK` | Set to `1` to silence the boot-time "update available" stderr notice (see below). |
+
+---
+
+## Staying up to date
+
+On startup the server makes one HTTPS call to the npm registry (~50 ms, 2 s timeout) to compare its running version against the latest published `@swarmwage/mcp`. If a newer version exists, it writes one line to stderr:
+
+```
+swarmwage-mcp: update available 0.3.0 → 0.4.0. Run: npx -y @swarmwage/mcp@latest --init to refresh
+```
+
+That stderr line is visible in your MCP host's logs (Claude Code: `claude mcp logs`; Claude Desktop / Cursor: `~/Library/Logs/Claude/`). **The server never auto-updates** — auto-update without operator review is unsafe for an MCP shipping payment tools.
+
+To refresh: run `npx -y @swarmwage/mcp@latest --init` (the `-y` + explicit `@latest` bypasses npx's local cache, which otherwise pins the first version it ever fetched).
+
+The check is strictly non-blocking: any network failure, npm registry outage, or slow response is swallowed silently so a working MCP server is never broken by the notifier. To silence the notice entirely (e.g. in offline environments), set `SWARMWAGE_NO_UPDATE_CHECK=1`.
 
 ---
 
