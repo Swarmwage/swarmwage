@@ -25,6 +25,7 @@ import {
 import { MemoryStore } from "./store/memory.js";
 import type { ReceiptRecord, RegistryStore } from "./store/types.js";
 import { verifyTypedPayload } from "./auth.js";
+import { challengeEndpointOwnership } from "./endpoint-verify.js";
 import { WebhookDispatcher } from "./webhooks.js";
 
 /**
@@ -111,6 +112,20 @@ export interface CreateAppOptions {
   enableRequestLogger?: boolean;
   /** Outbound webhook dispatcher. When omitted, no webhooks are fired. */
   webhookDispatcher?: WebhookDispatcher;
+  /**
+   * Endpoint ownership proof mode (Wave 2a). See env.ts for semantics:
+   * `off` skips the challenge (default — tests + memory-store use this),
+   * `soft` challenges and logs but still accepts, `enforce` rejects with
+   * HTTP 400 on a failed challenge.
+   */
+  endpointVerifyMode?: "off" | "soft" | "enforce";
+  /** Wall-clock budget for the verify GET. Defaults to 5000 ms. */
+  endpointVerifyTimeoutMs?: number;
+  /** Stubbable fetch + nonce for endpoint-verify tests. */
+  endpointVerifyOverrides?: {
+    fetchFn?: typeof fetch;
+    nonceFn?: () => string;
+  };
 }
 
 export interface CreatedApp {
@@ -122,6 +137,9 @@ export interface CreatedApp {
 export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   const store: RegistryStore = opts.store ?? new MemoryStore();
   const webhookDispatcher = opts.webhookDispatcher;
+  const endpointVerifyMode = opts.endpointVerifyMode ?? "off";
+  const endpointVerifyTimeoutMs = opts.endpointVerifyTimeoutMs ?? 5000;
+  const endpointVerifyOverrides = opts.endpointVerifyOverrides;
   const app = new Hono();
 
   if (opts.enableRequestLogger !== false) {
@@ -339,6 +357,33 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     const valid = await verifyTypedPayload(listing.agent_id, payload, signature);
     if (!valid) {
       return c.json({ error: "Invalid signature" }, 401);
+    }
+
+    // Endpoint ownership proof (Wave 2a). The listing signature above proves
+    // the publisher controls `agent_id`. This challenge proves the entity
+    // running `endpoint` also controls `agent_id` — i.e., they are the same
+    // operator. Closes the squat where a third-party endpoint is bound to
+    // a wallet that does not actually run it.
+    if (endpointVerifyMode !== "off") {
+      const result = await challengeEndpointOwnership(
+        listing.endpoint,
+        listing.agent_id,
+        {
+          timeoutMs: endpointVerifyTimeoutMs,
+          fetchFn: endpointVerifyOverrides?.fetchFn,
+          nonceFn: endpointVerifyOverrides?.nonceFn,
+        },
+      );
+      if (!result.ok) {
+        const msg = `endpoint ownership proof failed: ${result.reason}`;
+        if (endpointVerifyMode === "enforce") {
+          return c.json({ error: msg }, 400);
+        }
+        // soft mode: log and continue
+        process.stderr.write(
+          `swarmwage-registry: WARN ${listing.agent_id} ${listing.capability} ${msg}\n`,
+        );
+      }
     }
 
     await store.upsertListing(listing);

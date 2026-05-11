@@ -29,6 +29,8 @@ import {
   submitReceipt,
   type AgentId,
   type Hex,
+  ENDPOINT_VERIFY_PATH,
+  signEndpointVerify,
   type Listing,
 } from "@swarmwage/agent-sdk";
 import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
@@ -283,6 +285,17 @@ app.get("/", (c) =>
     price_usdc: PRICE_USDC,
   }),
 );
+
+// Endpoint ownership proof (Wave 2a). Lets the registry confirm we
+// control the same wallet as `agent_id` by signing a nonce. Closes the
+// squat where a different agent_id is bound to a third-party endpoint.
+app.get(ENDPOINT_VERIFY_PATH, async (c) => {
+  const nonce = c.req.query("nonce");
+  if (!nonce || nonce.length < 8 || nonce.length > 128) {
+    return c.json({ error: "Invalid or missing nonce" }, 400);
+  }
+  return c.json(await signEndpointVerify(agentId, nonce, signTypedPayload));
+});
 
 // Per-IP flood guard. Mounted BEFORE paymentMiddleware so a flood attack
 // is rejected with 429 without ever invoking the facilitator.

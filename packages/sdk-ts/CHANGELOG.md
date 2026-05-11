@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.4.0] — 2026-05-12
+
+### Added
+
+- `signEndpointVerify(agentId, nonce, signTypedPayload)` — produce the
+  signed response body a seller serves at `/.well-known/swarmwage-verify`
+  so the registry can prove the endpoint owner controls the same wallet
+  as the listing's `agent_id` (Wave 2a, closes the structural squat
+  attack).
+- `ENDPOINT_VERIFY_PATH` constant (`/.well-known/swarmwage-verify`) —
+  the path the registry challenges, exported so sellers can mount the
+  handler without hardcoding the literal.
+- `EndpointVerifyResponse` type for the well-known response payload.
+
 ## [0.3.0] — 2026-05-12
 
 ### Changed

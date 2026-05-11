@@ -33,7 +33,12 @@ const webhookDispatcher =
       })
     : undefined;
 
-const { app } = createApp({ store, webhookDispatcher });
+const { app } = createApp({
+  store,
+  webhookDispatcher,
+  endpointVerifyMode: env.endpointVerifyMode,
+  endpointVerifyTimeoutMs: env.endpointVerifyTimeoutMs,
+});
 
 if (shouldListen) {
   serve({ fetch: app.fetch, port: env.port }, (info) => {
@@ -41,7 +46,7 @@ if (shouldListen) {
       ? ` webhooks=${webhookReceivers.length}`
       : "";
     process.stderr.write(
-      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})${hooks}\n`,
+      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})${hooks} endpoint-verify=${env.endpointVerifyMode}\n`,
     );
   });
 }

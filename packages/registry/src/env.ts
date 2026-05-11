@@ -16,6 +16,26 @@ const EnvSchema = z
     // RECEIPT_WEBHOOK_SECRET is required for HMAC signing.
     RECEIPT_WEBHOOK_URLS: z.string().optional(),
     RECEIPT_WEBHOOK_SECRET: z.string().optional(),
+    // Endpoint ownership proof (Wave 2a). At publish time the registry
+    // GETs `<endpoint>/.well-known/swarmwage-verify?nonce=N` and verifies
+    // the signed response against the listing's agent_id. Modes:
+    //   off     — skip (Wave 1+1.5 already in production, this is opt-in)
+    //   soft    — challenge, log on failure, accept the listing anyway
+    //   enforce — challenge, reject on failure (HTTP 400)
+    // Default `off` so existing tests + the test memory-store don't try
+    // to fetch from non-existent endpoints. Production should run `soft`
+    // until all sellers report green, then flip to `enforce`.
+    ENDPOINT_VERIFY_MODE: z
+      .enum(["off", "soft", "enforce"])
+      .optional()
+      .default("off"),
+    // Wall-clock timeout for the verify GET. Sellers behind Caddy + ACME
+    // typically respond in <100ms; 5s is generous and covers cold-start.
+    ENDPOINT_VERIFY_TIMEOUT_MS: z
+      .string()
+      .optional()
+      .transform((v) => (v ? Number.parseInt(v, 10) : 5000))
+      .pipe(z.number().int().positive()),
   })
   .superRefine((data, ctx) => {
     const hasUrls =
@@ -34,11 +54,15 @@ const EnvSchema = z
     }
   });
 
+export type EndpointVerifyMode = "off" | "soft" | "enforce";
+
 export type RegistryEnv = {
   port: number;
   databaseUrl: string | undefined;
   receiptWebhookUrls: string | undefined;
   receiptWebhookSecret: string | undefined;
+  endpointVerifyMode: EndpointVerifyMode;
+  endpointVerifyTimeoutMs: number;
 };
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): RegistryEnv {
@@ -58,5 +82,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): RegistryEnv {
     databaseUrl: e.DATABASE_URL,
     receiptWebhookUrls: e.RECEIPT_WEBHOOK_URLS,
     receiptWebhookSecret: e.RECEIPT_WEBHOOK_SECRET,
+    endpointVerifyMode: e.ENDPOINT_VERIFY_MODE,
+    endpointVerifyTimeoutMs: e.ENDPOINT_VERIFY_TIMEOUT_MS,
   };
 }

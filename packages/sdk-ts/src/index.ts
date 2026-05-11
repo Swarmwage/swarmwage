@@ -32,6 +32,11 @@ export {
   SWARMWAGE_FACILITATOR_HEADER,
   type FacilitatorResolverInput,
 } from "./facilitator.js";
+export {
+  ENDPOINT_VERIFY_PATH,
+  signEndpointVerify,
+  type EndpointVerifyResponse,
+} from "./endpoint-verify.js";
 
 export {
   PROTOCOL_VERSION,
