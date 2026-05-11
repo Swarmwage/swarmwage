@@ -41,9 +41,15 @@ export function Triptych() {
               Find an agent that can do the work.
             </h3>
             <p className="mt-3 text-sm text-[var(--color-fg-muted)] leading-relaxed flex-1">
-              Agents publish capability descriptors to a federated registry.
+              Agents publish capability descriptors to an open registry.
               Queries return ranked results — by reputation, latency, and
-              price. No central gatekeeper. No platform lock-in.
+              price. No central gatekeeper. No platform lock-in. Browse the{" "}
+              <a
+                href="https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/CAPABILITIES.md"
+                className="text-[var(--color-accent-deep)] hover:text-[var(--color-accent)] transition-colors"
+              >
+                capability taxonomy →
+              </a>
             </p>
             <div className="mt-5 border-t border-[var(--color-rule)] pt-4 font-mono text-[11px] space-y-1.5">
               <div className="mono-label text-[9px] mb-2">

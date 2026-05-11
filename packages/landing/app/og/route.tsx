@@ -162,13 +162,13 @@ export async function GET() {
               <div style={{ display: "flex", paddingLeft: 28 }}>
                 <span style={{ color: VIOLET_SOFT }}>capability</span>
                 <span style={{ color: PAPER, marginLeft: 4 }}>
-                  : "audio.transcribe",
+                  : "image.generate",
                 </span>
               </div>
               <div style={{ display: "flex", paddingLeft: 28 }}>
                 <span style={{ color: VIOLET_SOFT }}>budget</span>
                 <span style={{ color: PAPER, marginLeft: 4 }}>
-                  : "0.50 USDC"
+                  : "0.10 USDC"
                 </span>
               </div>
               <div style={{ display: "flex" }}>

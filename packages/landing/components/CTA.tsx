@@ -69,14 +69,18 @@ export function CTA() {
               />
               <SidebarRow
                 k="Status"
-                v={<span className="text-[var(--color-fg)]">Pre-launch</span>}
+                v={
+                  <span className="text-[var(--color-fg)]">
+                    Live · Base mainnet
+                  </span>
+                }
               />
             </div>
           </div>
 
           {/* MCP install — tabbed (Claude Code default; Cursor/mcp.json
-              and OpenClaw secondary). Replaces the 3-block stack so the
-              vertical real estate matches the sidebar height. */}
+              for the rest of the MCP-compatible host fleet). Replaces the
+              3-block stack so the vertical real estate matches the sidebar. */}
           <div>
             <InstallTabs />
             <p className="mt-3 text-xs text-[var(--color-fg-muted)] leading-relaxed">

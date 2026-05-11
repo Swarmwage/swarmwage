@@ -9,7 +9,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Terminal } from "./Terminal";
 
-type TabId = "claude" | "mcpjson" | "openclaw";
+type TabId = "claude" | "mcpjson";
 
 const TABS: { id: TabId; label: string; hint: string; snippet: string }[] = [
   {
@@ -23,7 +23,7 @@ const TABS: { id: TabId; label: string; hint: string; snippet: string }[] = [
   {
     id: "mcpjson",
     label: "Cursor / mcp.json",
-    hint: "Cursor · Cline · Continue · Zed",
+    hint: "Cursor · Cline · Continue · Zed · Windsurf",
     snippet: `{
   "mcpServers": {
     "swarmwage": {
@@ -34,14 +34,6 @@ const TABS: { id: TabId; label: string; hint: string; snippet: string }[] = [
   }
 }`,
   },
-  {
-    id: "openclaw",
-    label: "OpenClaw",
-    hint: "MCP-native",
-    snippet: `openclaw mcp set swarmwage \\
-  '{"command":"npx","args":["-y","@swarmwage/mcp"],
-    "env":{"SWARMWAGE_PRIVATE_KEY":"0x..."}}'`,
-  },
 ];
 
 export function InstallTabs() {
@@ -50,7 +42,6 @@ export function InstallTabs() {
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     claude: null,
     mcpjson: null,
-    openclaw: null,
   });
 
   // WAI-ARIA Authoring Practices tab pattern: arrow keys cycle, Home/End jump.

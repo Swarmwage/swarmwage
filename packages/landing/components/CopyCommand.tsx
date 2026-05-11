@@ -4,8 +4,7 @@
 
 // Click-to-copy install command. Pattern: Stripe, Plaid, shadcn, Vercel docs —
 // the dev expectation when they see `$ npm i ...` is "copy to clipboard",
-// not "navigate to npm registry". Pre-launch, the npm package may not even
-// exist yet; copy-to-clipboard is the right primitive regardless.
+// not "navigate to npm registry". Copy-to-clipboard is the right primitive.
 
 import { useState } from "react";
 

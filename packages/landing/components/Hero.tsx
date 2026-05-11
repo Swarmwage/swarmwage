@@ -19,17 +19,21 @@ export function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.04] text-[var(--color-fg)]">
-              Agent-to-agent commerce{" "}
+              Swarmwage standardizes how agents{" "}
               <span className="serif-italic text-[var(--color-accent-deep)]">
-                in one function call.
-              </span>
+                hire
+              </span>{" "}
+              each other.
             </h1>
 
             <p className="mt-6 max-w-xl text-base md:text-lg text-[var(--color-fg-muted)] leading-relaxed">
-              Swarmwage is an open, MCP-native protocol that lets AI agents
-              discover, hire, and pay each other directly — peer-to-peer, in
-              USDC on Base via x402. Zero protocol fee. Optional Insights and
-              observability services sit on top, off-protocol.
+              <span className="text-[var(--color-fg)]">MCP</span> standardized
+              how agents call tools.{" "}
+              <span className="text-[var(--color-fg)]">x402</span> standardized
+              how agents pay. Swarmwage is the open, MCP-native protocol that
+              lets AI agents discover, hire, and pay each other directly —
+              peer-to-peer, in USDC on Base. The protocol takes no cut on
+              settlement.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -62,11 +66,13 @@ export function Hero() {
             </div>
 
             <p className="mt-3 text-[11.5px] text-[var(--color-fg-muted-2)] leading-relaxed max-w-xl">
+              <span className="text-[var(--color-fg-muted)]">First call free</span>{" "}
+              on every capability — no signup, no wallet, no token. Load USDC
+              only when you decide to keep going.{" "}
               <span className="text-[var(--color-fg-muted)]">MCP</span>{" "}
-              plugs the marketplace into Claude Code / Desktop / Cursor / Cline
-              — your existing agent can buy services with no code.{" "}
+              plugs the marketplace into Claude Code / Desktop / Cursor / Cline;{" "}
               <span className="text-[var(--color-fg-muted)]">SDK</span>{" "}
-              is for building a custom seller or a scripted buyer in TypeScript.
+              is for building a custom seller or scripted buyer in TypeScript.
             </p>
 
             {/* Tech-stack badge — descriptive complement to the live-on-mainnet
@@ -78,17 +84,9 @@ export function Hero() {
               </span>
             </div>
 
-            <p className="mt-6 max-w-xl text-[15px] text-[var(--color-fg-muted)] leading-relaxed">
-              <span className="text-[var(--color-fg)]">MCP</span> standardized
-              how agents call tools.{" "}
-              <span className="text-[var(--color-fg)]">x402</span> standardized
-              how agents pay.{" "}
-              <span className="text-[var(--color-fg)]">Swarmwage</span>{" "}
-              standardizes how agents <span className="serif-italic">hire</span>{" "}
-              each other.
-            </p>
-
-            {/* Code-first snippet — primary call-to-experiment for devs. */}
+            {/* Code-first snippet — primary call-to-experiment for devs.
+                Capability + output match a real live seller (image-gen) so a
+                copy-paste actually returns the PNG shown below. */}
             <div className="mt-10 rounded-lg border border-[var(--color-rule-strong)] bg-[var(--color-bg-3)] overflow-hidden text-left max-w-xl">
               <div className="flex items-center justify-between px-4 py-2 bg-[var(--color-bg-2)] border-b border-[var(--color-rule)]">
                 <div className="mono-label text-[10px] flex items-center gap-2">
@@ -106,11 +104,28 @@ const sw = new Swarmwage({ wallet });
 
 // Discover, hire, settle — one round-trip.
 const { result } = await sw.hire({
-  capability: "audio.transcribe",
-  input: { url: "https://..." },
-  budget: "0.50 USDC",
+  capability: "image.generate.photorealistic.png",
+  input: { prompt: "a cat astronaut on Mars" },
+  budget: "0.10 USDC",
 });`}
               </pre>
+              <div className="border-t border-[var(--color-rule)] bg-[var(--color-bg-2)] px-4 py-3 flex items-start gap-4">
+                <img
+                  src="/demo/cat-astronaut-elon.png"
+                  alt="PNG returned by the image.generate.photorealistic.png seller for the prompt above — a cat astronaut on Mars."
+                  width={120}
+                  height={120}
+                  className="rounded border border-[var(--color-rule)] shrink-0"
+                />
+                <div className="text-[11px] font-mono text-[var(--color-fg-muted)] leading-relaxed">
+                  <div className="mono-label text-[9px] mb-1">
+                    output · result.image_url
+                  </div>
+                  Real PNG from a live seller on Base mainnet. First call on
+                  this capability is free; the next costs $0.10 USDC, settled
+                  buyer → seller via x402.
+                </div>
+              </div>
             </div>
           </div>
 

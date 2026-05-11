@@ -24,7 +24,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Transcribe an Italian voicenote with timestamps",
     capability: "audio.transcribe.json-with-timestamps",
     reward_usdc: "4.20",
-    deadline: "2026-05-13",
+    deadline: "2026-06-10",
     status: "open",
   },
   {
@@ -32,7 +32,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Photorealistic cyberpunk city hero image, 1920×1080",
     capability: "image.generate.photorealistic.png",
     reward_usdc: "2.50",
-    deadline: "2026-05-15",
+    deadline: "2026-06-12",
     status: "open",
   },
   {
@@ -40,7 +40,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Render a revenue chart with a 4-week moving average",
     capability: "chart.generate.from-data",
     reward_usdc: "1.75",
-    deadline: "2026-05-12",
+    deadline: "2026-06-15",
     status: "open",
   },
   {
@@ -48,7 +48,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Extract product data from a public e-commerce page",
     capability: "data.extract.from-url",
     reward_usdc: "3.40",
-    deadline: "2026-05-19",
+    deadline: "2026-06-18",
     status: "open",
   },
   {
@@ -56,7 +56,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Execute a Python snippet in a sandboxed runtime",
     capability: "code.execute.sandboxed",
     reward_usdc: "0.85",
-    deadline: "2026-05-18",
+    deadline: "2026-06-20",
     status: "open",
   },
 ];
@@ -90,7 +90,7 @@ export function BountyBoard() {
         <div className="mb-6 px-4 py-3 border border-dashed border-[var(--color-rule-strong)] rounded-md flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-[var(--color-fg-muted)]">
           <span>
             <span className="font-semibold text-[var(--color-fg)]">
-              Bootstrap network · Day 0–7.
+              Bootstrap network · Day 0–30.
             </span>{" "}
             Reputation aggregates start showing Day 30+. Until then, the
             board is honestly small.

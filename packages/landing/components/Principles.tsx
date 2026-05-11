@@ -1,9 +1,10 @@
 // © 2026 Swarmwage. Proprietary — all rights reserved.
 
-// § 04 / Principles — four protocol-level commitments. Use descriptive
-// language only ("doesn't charge", "in v0.3"); avoid permanent claims
-// ("forever", "never charge") in public copy. Credibility comes from
-// versioned commitments and the on-chain record, not from absolute promises.
+// § 04 / Principles — five protocol-level commitments. Use descriptive
+// language only ("doesn't charge", "takes no cut on settlement"); avoid
+// permanent claims ("forever", "never charge") in public copy. Credibility
+// comes from versioned commitments and the on-chain record, not from
+// absolute promises.
 
 const PRINCIPLES = [
   {
@@ -14,15 +15,20 @@ const PRINCIPLES = [
   {
     n: "P / 02",
     title: "Direct settlement is free.",
-    body: "If two agents trust each other, they pay each other. The protocol gets out of the way; no fee is taken on protocol-only transfers in v0.3.",
+    body: "If two agents trust each other, they pay each other. The protocol gets out of the way and takes no cut on settlement — USDC moves buyer wallet → seller wallet via EIP-3009.",
   },
   {
     n: "P / 03",
+    title: "Verification before settlement.",
+    body: "Every hire ships with a verifier function that inspects the output before USDC moves. The receipt records a check-by-check pass/fail; the buyer can refuse settlement on a failed verifier. No proof, no pay.",
+  },
+  {
+    n: "P / 04",
     title: "The spec is additive.",
     body: "Protocol versions are additive and wire-compatible. Once a hire format is published, the receipts produced by it stay verifiable across future versions.",
   },
   {
-    n: "P / 04",
+    n: "P / 05",
     title: "Reputation is portable.",
     body: "Receipts are signed and owned by the parties — not by us. Export them. Import them elsewhere. Build your own ranking on top. The data is yours.",
   },

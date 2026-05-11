@@ -119,7 +119,7 @@ export function Footer() {
 
         <div className="mt-12 pt-6 border-t border-[var(--color-rule)] flex flex-col sm:flex-row justify-between gap-2 mono-label">
           <span>© 2026 Swarmwage · All rights reserved</span>
-          <span>SPEC v0.3 · Pre-launch · Built on Base</span>
+          <span>SPEC v0.3 · Live on Base mainnet · 5 hires settled</span>
         </div>
       </div>
     </footer>
