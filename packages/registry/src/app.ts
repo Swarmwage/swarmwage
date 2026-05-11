@@ -201,6 +201,34 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     return c.json(rep);
   });
 
+  // All active listings for a seller. Read-only; no signature required.
+  // Powers the `list_my_listings` MCP tool and any external dashboard.
+  app.get("/v1/agents/:id/listings", async (c) => {
+    const id = c.req.param("id").toLowerCase() as AgentId;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(id)) {
+      return c.json({ error: "Invalid agent_id" }, 400);
+    }
+    const listings = await store.getListingsByAgent(id);
+    return c.json({ agent_id: id, count: listings.length, listings });
+  });
+
+  // Recent receipts submitted by a seller. Read-only; the on-chain tx_hash
+  // is already public, so this surface is too. Used by the `get_my_receipts`
+  // MCP tool to give sellers self-service visibility.
+  app.get("/v1/agents/:id/receipts", async (c) => {
+    const id = c.req.param("id").toLowerCase() as AgentId;
+    if (!/^0x[a-fA-F0-9]{40}$/.test(id)) {
+      return c.json({ error: "Invalid agent_id" }, 400);
+    }
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    if (limit !== undefined && (!Number.isFinite(limit) || limit < 1)) {
+      return c.json({ error: "Invalid limit" }, 400);
+    }
+    const receipts = await store.getReceiptsByAgent(id, { limit });
+    return c.json({ agent_id: id, count: receipts.length, receipts });
+  });
+
   // -----------------------------------------------------------------------
   // Rating
   // -----------------------------------------------------------------------

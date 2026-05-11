@@ -180,6 +180,33 @@ export type JobStatus =
 
 export type Stars = 1 | 2 | 3 | 4 | 5;
 
+// -------------------------------------------------------------------------
+// Seller-submitted receipts (Layer 3 of the 4-layer data capture)
+// -------------------------------------------------------------------------
+
+/**
+ * A receipt as stored on the registry after the seller signs and submits it.
+ * Returned by `client.getMyReceipts()` and `GET /v1/agents/:id/receipts`.
+ * Shape mirrors the registry's `ReceiptRecord` plus the assigned `id`.
+ */
+export interface SubmittedReceipt {
+  id: string;
+  protocol_version: string;
+  hire_id: string;
+  agent_id: AgentId;
+  buyer: AgentId;
+  capability: CapabilityId;
+  capability_version?: string;
+  amount_usdc_atomic: string;
+  network: "base" | "base-sepolia";
+  tx_hash: Hex;
+  completed_at: string;
+  verification_all_passed: boolean;
+  verification_checks: Record<string, boolean>;
+  signature: Hex;
+  ts?: number;
+}
+
 export interface RatingRequest {
   rating_token: string;
   stars: Stars;

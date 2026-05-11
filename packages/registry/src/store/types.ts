@@ -93,6 +93,8 @@ export interface RegistryStore {
   upsertListing(listing: Listing): Promise<void>;
   search(req: SearchRequest): Promise<SearchResultEntry[]>;
   getListing(agentId: AgentId, capability: CapabilityId): Promise<Listing | null>;
+  /** All listings for a single seller (read-only, no signature required). */
+  getListingsByAgent(agentId: AgentId): Promise<Listing[]>;
 
   // Hires (written by indexer in production; insertable here for tests)
   recordHire(hire: HireRecord): Promise<void>;
@@ -107,6 +109,15 @@ export interface RegistryStore {
   appendReceipt(
     receipt: ReceiptRecord,
   ): Promise<{ inserted: boolean; id: string }>;
+  /**
+   * Receipts submitted by a given seller, most recent first. Read-only
+   * surface for the `get_my_receipts` MCP tool and the `/v1/agents/:id/receipts`
+   * endpoint. `limit` defaults to 50, capped at 200 by callers.
+   */
+  getReceiptsByAgent(
+    agentId: AgentId,
+    opts?: { limit?: number },
+  ): Promise<Array<ReceiptRecord & { id: string }>>;
 
   // Ratings
   consumeRatingTokenAndStore(rating: RatingRecord): Promise<void>;

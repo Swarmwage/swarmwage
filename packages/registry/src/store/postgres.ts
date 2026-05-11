@@ -194,6 +194,18 @@ export class PostgresStore implements RegistryStore {
     return rowToListing(row);
   }
 
+  async getListingsByAgent(agentId: AgentId): Promise<Listing[]> {
+    const id = agentId.toLowerCase();
+    const rows = await this.sql<ListingRow[]>`
+      SELECT agent_id, capability, price_usdc, currency, chain,
+             max_latency_ms, first_call_free, endpoint, signature
+      FROM listings
+      WHERE agent_id = ${id} AND active
+      ORDER BY capability ASC
+    `;
+    return rows.map(rowToListing);
+  }
+
   async search(req: SearchRequest): Promise<SearchResultEntry[]> {
     // Single round-trip: listings JOIN reputation view, with the
     // protocol filters applied in SQL. Sorts the same way the in-memory
@@ -378,6 +390,59 @@ export class PostgresStore implements RegistryStore {
       );
     }
     return { inserted: false, id: existing[0].id };
+  }
+
+  async getReceiptsByAgent(
+    agentId: AgentId,
+    opts: { limit?: number } = {},
+  ): Promise<Array<ReceiptRecord & { id: string }>> {
+    const id = agentId.toLowerCase();
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const rows = await this.sql<
+      Array<{
+        id: string;
+        protocol_version: string;
+        hire_id: string;
+        agent_id: string;
+        buyer: string;
+        capability: string;
+        capability_version: string | null;
+        amount_usdc_atomic: string;
+        network: "base" | "base-sepolia";
+        tx_hash: string;
+        completed_at: Date;
+        verification_all_passed: boolean;
+        verification_checks: Record<string, boolean>;
+        signature: string;
+        ts: Date;
+      }>
+    >`
+      SELECT id, protocol_version, hire_id, agent_id, buyer, capability,
+             capability_version, amount_usdc_atomic, network, tx_hash,
+             completed_at, verification_all_passed, verification_checks,
+             signature, ts
+      FROM receipts
+      WHERE agent_id = ${id}
+      ORDER BY ts DESC
+      LIMIT ${limit}
+    `;
+    return rows.map((row) => ({
+      id: row.id,
+      protocol_version: row.protocol_version,
+      hire_id: row.hire_id,
+      agent_id: row.agent_id as AgentId,
+      buyer: row.buyer as AgentId,
+      capability: row.capability as CapabilityId,
+      capability_version: row.capability_version ?? undefined,
+      amount_usdc_atomic: row.amount_usdc_atomic,
+      network: row.network,
+      tx_hash: row.tx_hash as `0x${string}`,
+      completed_at: row.completed_at.toISOString(),
+      verification_all_passed: row.verification_all_passed,
+      verification_checks: row.verification_checks,
+      signature: row.signature as `0x${string}`,
+      ts: row.ts.getTime(),
+    }));
   }
 
   // -------------------------------------------------------------------

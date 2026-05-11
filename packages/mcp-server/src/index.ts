@@ -28,6 +28,7 @@ import {
   type AgentId,
   type BudgetToken,
   type Hex,
+  type Listing,
   type Stars,
 } from "@swarmwage/agent-sdk";
 
@@ -197,6 +198,109 @@ const tools: Tool[] = [
       properties: {},
     },
   },
+  // -----------------------------------------------------------------------
+  // Seller-side tools — for agents that want to publish their own services
+  // to the Swarmwage registry and earn USDC for each call.
+  // -----------------------------------------------------------------------
+  {
+    name: "publish_listing",
+    description:
+      "Publish (or update) a listing on the Swarmwage registry, advertising a capability this agent can fulfill. After publishing, buyers can discover and hire you via `search_agents` and `hire_agent`. The listing is idempotent on (agent_id, capability) — calling again replaces price, endpoint, latency, etc. Your agent must already be running an HTTP server that accepts x402 payments at `endpoint`. Returns the signed listing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description:
+            "Capability ID this listing serves, e.g. 'image.generate.photorealistic.png'. See https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/CAPABILITIES.md.",
+        },
+        price_usdc: {
+          type: "string",
+          description: "Price per call in USDC as a decimal string, e.g. '0.02'.",
+        },
+        endpoint: {
+          type: "string",
+          description:
+            "Public HTTPS URL of your seller server's hire endpoint, e.g. 'https://my-agent.example.com/hire'. Must serve x402 payment-required responses and return the capability output on payment.",
+        },
+        max_latency_ms: {
+          type: "number",
+          description:
+            "Worst-case latency you commit to, in milliseconds. Buyers filter by this.",
+        },
+        first_call_free: {
+          type: "boolean",
+          description:
+            "Whether the first call from any new buyer is free (helps discovery). Defaults to false.",
+        },
+        currency: {
+          type: "string",
+          description: "Always 'USDC' at launch.",
+          enum: ["USDC"],
+        },
+        chain: {
+          type: "string",
+          description: "Payment chain. 'base' for mainnet, 'base-sepolia' for testnet.",
+          enum: ["base", "base-sepolia"],
+        },
+      },
+      required: [
+        "capability",
+        "price_usdc",
+        "endpoint",
+        "max_latency_ms",
+      ],
+    },
+  },
+  {
+    name: "update_listing",
+    description:
+      "Alias of `publish_listing` — same idempotent upsert. Use this when changing price, endpoint, or max_latency_ms of a capability you already publish. All fields are required (the update replaces the entire listing).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description: "Capability ID being updated.",
+        },
+        price_usdc: { type: "string", description: "New price per call in USDC." },
+        endpoint: { type: "string", description: "New endpoint URL." },
+        max_latency_ms: { type: "number", description: "New max latency in ms." },
+        first_call_free: { type: "boolean" },
+        currency: { type: "string", enum: ["USDC"] },
+        chain: { type: "string", enum: ["base", "base-sepolia"] },
+      },
+      required: [
+        "capability",
+        "price_usdc",
+        "endpoint",
+        "max_latency_ms",
+      ],
+    },
+  },
+  {
+    name: "list_my_listings",
+    description:
+      "Return all active listings this agent has published to the registry. Read-only. Use this to see what capabilities you're currently offering and at what price.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "get_my_receipts",
+    description:
+      "Return recent receipts this agent has submitted to the registry (seller-side view). Receipts are written automatically by the SDK's x402 post-settle hook after each successful hire — this tool is read-only visibility, NOT a way to submit them manually. Use it to audit your recent earnings, dispute rate, or verification pass rate. Most recent first.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "How many receipts to return. Default 50, max 200.",
+        },
+      },
+    },
+  },
 ];
 
 // -------------------------------------------------------------------------
@@ -264,6 +368,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_agent_id": {
         return ok({ agent_id: client.agentId });
+      }
+
+      case "publish_listing":
+      case "update_listing": {
+        const listing = await client.publishListing({
+          capability: String(args.capability),
+          price_usdc: String(args.price_usdc),
+          endpoint: String(args.endpoint),
+          max_latency_ms: Number(args.max_latency_ms),
+          first_call_free: Boolean(args.first_call_free ?? false),
+          currency: (args.currency as "USDC" | undefined) ?? "USDC",
+          chain: (args.chain as Listing["chain"] | undefined) ?? "base",
+        } as Omit<Listing, "agent_id" | "signature">);
+        return ok({ listing });
+      }
+
+      case "list_my_listings": {
+        const listings = await client.getMyListings();
+        return ok({ count: listings.length, listings });
+      }
+
+      case "get_my_receipts": {
+        const receipts = await client.getMyReceipts({
+          limit: args.limit as number | undefined,
+        });
+        return ok({ count: receipts.length, receipts });
       }
 
       default:

@@ -53,6 +53,7 @@ export {
   type Receipt,
   type RatingRequest,
   type Stars,
+  type SubmittedReceipt,
   type VerificationCheck,
   type VerificationResult,
 } from "./types.js";

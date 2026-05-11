@@ -92,6 +92,15 @@ export class MemoryStore implements RegistryStore {
     return this.listings.get(this.listingKey(agentId, capability)) ?? null;
   }
 
+  async getListingsByAgent(agentId: AgentId): Promise<Listing[]> {
+    const id = agentId.toLowerCase();
+    const out: Listing[] = [];
+    for (const listing of this.listings.values()) {
+      if (listing.agent_id.toLowerCase() === id) out.push(listing);
+    }
+    return out;
+  }
+
   async search(req: SearchRequest): Promise<SearchResultEntry[]> {
     const results: SearchResultEntry[] = [];
     for (const listing of this.listings.values()) {
@@ -243,6 +252,21 @@ export class MemoryStore implements RegistryStore {
       record: { ...receipt, ts: Date.now() },
     });
     return { inserted: true, id };
+  }
+
+  async getReceiptsByAgent(
+    agentId: AgentId,
+    opts: { limit?: number } = {},
+  ): Promise<Array<ReceiptRecord & { id: string }>> {
+    const id = agentId.toLowerCase();
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const matches: Array<ReceiptRecord & { id: string }> = [];
+    for (const { id: receiptId, record } of this.receipts.values()) {
+      if (record.agent_id.toLowerCase() !== id) continue;
+      matches.push({ ...record, id: receiptId });
+    }
+    matches.sort((a, b) => (b.ts ?? 0) - (a.ts ?? 0));
+    return matches.slice(0, limit);
   }
 
   async recordTelemetry(event: TelemetryRecord): Promise<void> {

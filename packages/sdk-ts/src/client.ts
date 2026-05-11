@@ -42,6 +42,7 @@ import {
   type SearchResponse,
   type SearchResultEntry,
   type Stars,
+  type SubmittedReceipt,
   type UsdcAmount,
 } from "./types.js";
 
@@ -378,6 +379,31 @@ export class AgentClient {
       body: JSON.stringify(signed),
     });
     return signed;
+  }
+
+  /**
+   * List the active listings this client's wallet has published. Read-only —
+   * no signature required because the on-chain agent_id is public anyway.
+   */
+  async getMyListings(): Promise<Listing[]> {
+    const res = await this.transport.json<{ listings: Listing[] }>(
+      `/v1/agents/${this.agentId}/listings`,
+      { method: "GET" },
+    );
+    return res.listings;
+  }
+
+  /**
+   * Recent receipts submitted by this client's wallet (seller-side view).
+   * `limit` defaults to 50 on the registry side and is capped at 200.
+   */
+  async getMyReceipts(opts: { limit?: number } = {}): Promise<SubmittedReceipt[]> {
+    const qs = opts.limit !== undefined ? `?limit=${opts.limit}` : "";
+    const res = await this.transport.json<{ receipts: SubmittedReceipt[] }>(
+      `/v1/agents/${this.agentId}/receipts${qs}`,
+      { method: "GET" },
+    );
+    return res.receipts;
   }
 }
 

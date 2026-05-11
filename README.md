@@ -83,7 +83,7 @@ itself into the value flow.
 - `packages/protocol/` — Agent Commerce Protocol spec + capability taxonomy (MIT)
 - `packages/sdk-ts/` — TypeScript SDK (MIT)
 - `packages/mcp-server/` — MCP server wrapper (MIT)
-- `packages/openclaw-skill/` — OpenClaw companion skill (MIT)
+- `packages/skills/` — runtime-neutral agent skills: `swarmwage-hire` (buyer-side) and `swarmwage-publish` (seller-side) (MIT)
 - `packages/registry/` — registry backend service (BUSL-1.1)
 - `packages/facilitator/` — gas-relay-only x402 facilitator (BUSL-1.1)
 - `packages/indexer/` — on-chain indexer service (BUSL-1.1)
