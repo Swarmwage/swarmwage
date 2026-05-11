@@ -206,13 +206,27 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
 
   const ListingSchema = z.object({
     agent_id: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-    capability: z.string(),
+    // ASCII-only lowercase taxonomy. Rejects empty strings, Unicode
+    // homoglyphs (e.g. Cyrillic `і` U+0456 squatting on Latin `image…`),
+    // and uppercase or whitespace garbage that would fragment the namespace.
+    capability: z
+      .string()
+      .min(3)
+      .max(128)
+      .regex(/^[a-z][a-z0-9._-]*$/),
     price_usdc: z.string().regex(/^\d+(\.\d+)?$/),
     currency: z.literal("USDC").default("USDC"),
     chain: z.literal("base").default("base"),
     max_latency_ms: z.number().int().positive(),
     first_call_free: z.boolean().default(false),
-    endpoint: z.string().url(),
+    // HTTPS-only. Plain http:// endpoints would let an in-path attacker
+    // intercept the EIP-3009 payment authorization headers.
+    endpoint: z
+      .string()
+      .url()
+      .refine((u) => u.startsWith("https://"), {
+        message: "endpoint must use HTTPS",
+      }),
     signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
   });
 

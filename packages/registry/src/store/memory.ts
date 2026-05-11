@@ -31,6 +31,11 @@ interface AgentRow {
 export class MemoryStore implements RegistryStore {
   private agents = new Map<AgentId, AgentRow>();
   private listings = new Map<string, Listing>(); // key: `${agentId}:${capability}`
+  // Parallel to `listings`. Captures first-publish time per (agent_id,
+  // capability) pair so search ranking can tie-break on age and squat-style
+  // same-capability listings cannot leapfrog older ones on price alone.
+  // Mirrors the `listings.created_at` column in Postgres.
+  private listingFirstSeen = new Map<string, number>();
   private hires: HireRecord[] = [];
   private ratings: RatingRecord[] = [];
   private claims = new Map<string, ClaimChallenge>(); // key: verification_hash
@@ -85,7 +90,11 @@ export class MemoryStore implements RegistryStore {
 
   async upsertListing(listing: Listing): Promise<void> {
     await this.upsertAgent(listing.agent_id);
-    this.listings.set(this.listingKey(listing.agent_id, listing.capability), listing);
+    const key = this.listingKey(listing.agent_id, listing.capability);
+    if (!this.listingFirstSeen.has(key)) {
+      this.listingFirstSeen.set(key, Date.now());
+    }
+    this.listings.set(key, listing);
   }
 
   async getListing(agentId: AgentId, capability: CapabilityId): Promise<Listing | null> {
@@ -185,11 +194,30 @@ export class MemoryStore implements RegistryStore {
             },
       });
     }
-    // Sort: ratings desc, then price asc
+    // Ranking (mirrors PostgresStore.searchInternal):
+    //   1. listings with any rating come first (anti-squat)
+    //   2. within rated, by avg_stars * last_30d_hire_count DESC
+    //   3. tie-break by first-seen ASC (older listings outrank fresh squats)
+    //   4. final tie-break by price ASC
     results.sort((a, b) => {
+      const aTier = a.reputation.total_ratings > 0 ? 1 : 0;
+      const bTier = b.reputation.total_ratings > 0 ? 1 : 0;
+      if (aTier !== bTier) return bTier - aTier;
+
       const aScore = a.reputation.avg_stars * a.reputation.last_30d_hire_count;
       const bScore = b.reputation.avg_stars * b.reputation.last_30d_hire_count;
       if (aScore !== bScore) return bScore - aScore;
+
+      const aFirstSeen =
+        this.listingFirstSeen.get(
+          this.listingKey(a.agent_id, a.listing.capability),
+        ) ?? 0;
+      const bFirstSeen =
+        this.listingFirstSeen.get(
+          this.listingKey(b.agent_id, b.listing.capability),
+        ) ?? 0;
+      if (aFirstSeen !== bFirstSeen) return aFirstSeen - bFirstSeen;
+
       return Number(a.listing.price_usdc) - Number(b.listing.price_usdc);
     });
     const limit = req.limit ?? 10;

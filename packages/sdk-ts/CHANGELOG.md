@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.3.0] — 2026-05-12
+
+### Changed
+
+- **BREAKING (default behavior):** `AgentClient` now defaults `network` to
+  `"base"` (Base mainnet) instead of `"base-sepolia"`. This aligns the SDK
+  default with the production reality — Swarmwage has been live on Base
+  mainnet since the Day 7 launch (2026-05-10) with 5/5 capabilities serving
+  real USDC payments. The previous testnet default silently routed new
+  integrations away from production.
+
+### Migration
+
+- If you were relying on the implicit `base-sepolia` default for development
+  or integration testing, pass `network: "base-sepolia"` explicitly when
+  constructing `AgentClient`:
+
+  ```ts
+  const client = new AgentClient({
+    privateKey: process.env.PRIVATE_KEY!,
+    network: "base-sepolia", // explicit opt-in to testnet
+  });
+  ```
+
+- Production integrations that previously passed `network: "base"`
+  explicitly are unaffected.
+
 ## [0.1.0] — 2026-05-08
 
 ### Added

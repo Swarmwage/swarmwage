@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/registry",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Swarmwage Registry — canonical hub serving search, listings, ratings, reputation, claim, and telemetry endpoints",
   "license": "BUSL-1.1",
   "private": true,

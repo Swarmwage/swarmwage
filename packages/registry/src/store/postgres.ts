@@ -235,8 +235,14 @@ export class PostgresStore implements RegistryStore {
     mode: "exact" | "prefix",
   ): Promise<SearchResultEntry[]> {
     // Single round-trip: listings JOIN reputation view, with the
-    // protocol filters applied in SQL. Sorts the same way the in-memory
-    // store does: avg_stars * last_30d_hire_count DESC, price ASC.
+    // protocol filters applied in SQL. Ranking order (matches MemoryStore):
+    //   1. listings with any rating come first (squat-protection: a fresh
+    //      unclaimed listing cannot leapfrog a proven agent on price alone)
+    //   2. within rated, by avg_stars * last_30d_hire_count DESC
+    //   3. tie-break on l.created_at ASC — oldest listing first, so seed
+    //      agents present since Day 7 outrank a same-day price-cut squat
+    //   4. final tie-break on price ASC (relevant only inside the same
+    //      reputation + first-seen bucket)
     const limit = req.limit ?? 10;
     const maxPrice =
       req.max_price_usdc !== undefined ? Number(req.max_price_usdc) : null;
@@ -273,7 +279,9 @@ export class PostgresStore implements RegistryStore {
         AND (${maxLatency}::integer IS NULL OR l.max_latency_ms <= ${maxLatency}::integer)
         AND (${minSuccess}::float IS NULL OR r.success_rate >= ${minSuccess}::float)
         AND (${minStars}::float IS NULL OR r.avg_stars >= ${minStars}::float)
-      ORDER BY (r.avg_stars * r.last_30d_hire_count) DESC,
+      ORDER BY (CASE WHEN COALESCE(r.total_ratings, 0) > 0 THEN 1 ELSE 0 END) DESC,
+               (COALESCE(r.avg_stars, 0) * COALESCE(r.last_30d_hire_count, 0)) DESC,
+               l.created_at ASC,
                l.price_usdc::numeric ASC
       LIMIT ${limit}
     `;

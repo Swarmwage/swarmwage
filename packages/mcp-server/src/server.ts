@@ -161,7 +161,12 @@ const tools: Tool[] = [
         max_latency_ms: { type: "number", description: "Worst-case latency, in ms." },
         first_call_free: { type: "boolean", description: "Whether the first call is free." },
         currency: { type: "string", enum: ["USDC"] },
-        chain: { type: "string", enum: ["base", "base-sepolia"] },
+        chain: {
+          type: "string",
+          enum: ["base"],
+          description:
+            "Settlement chain for this listing. Only 'base' (Base mainnet) is accepted by the public registry.",
+        },
       },
       required: ["capability", "price_usdc", "endpoint", "max_latency_ms"],
     },
@@ -179,7 +184,12 @@ const tools: Tool[] = [
         max_latency_ms: { type: "number" },
         first_call_free: { type: "boolean" },
         currency: { type: "string", enum: ["USDC"] },
-        chain: { type: "string", enum: ["base", "base-sepolia"] },
+        chain: {
+          type: "string",
+          enum: ["base"],
+          description:
+            "Settlement chain for this listing. Only 'base' (Base mainnet) is accepted by the public registry.",
+        },
       },
       required: ["capability", "price_usdc", "endpoint", "max_latency_ms"],
     },
@@ -277,11 +287,18 @@ export async function runServer(): Promise<void> {
     }
   }
 
+  // Default to Base mainnet (matches production listings on api.swarmwage.com).
+  // Override with SWARMWAGE_NETWORK=base-sepolia for testnet.
+  const NETWORK: "base" | "base-sepolia" =
+    (process.env.SWARMWAGE_NETWORK as "base" | "base-sepolia" | undefined) ??
+    "base";
+
   const client: AgentClient | undefined = PRIVATE_KEY
     ? new AgentClient({
         privateKey: PRIVATE_KEY,
         registryUrl: REGISTRY_URL,
         budget,
+        network: NETWORK,
       })
     : undefined;
 

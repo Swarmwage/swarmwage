@@ -57,7 +57,12 @@ export interface AgentClientOptions extends WalletConfig {
   budget?: BudgetToken;
   /** Force telemetry on/off. Defaults to env var `AGENT_TELEMETRY`. */
   telemetry?: boolean;
-  /** Chain to use for x402 payments. Defaults to `base-sepolia`. */
+  /**
+   * Chain to use for x402 payments. Defaults to `"base"` (Base mainnet),
+   * matching the production network where Swarmwage is live. Pass
+   * `"base-sepolia"` explicitly to target the Base Sepolia testnet for
+   * development or integration testing.
+   */
   network?: SwarmwageNetwork;
   /** Override the JSON-RPC URL. Defaults to viem's public RPC for the network. */
   rpcUrl?: string;
@@ -96,7 +101,7 @@ export class AgentClient {
   constructor(opts: AgentClientOptions) {
     this.wallet = createWallet({ privateKey: opts.privateKey });
     this.registryUrl = opts.registryUrl ?? "https://api.swarmwage.com";
-    this.network = opts.network ?? "base-sepolia";
+    this.network = opts.network ?? "base";
     this.facilitatorUrl = resolveFacilitatorUrl({
       facilitatorUrl: opts.facilitatorUrl,
     });
