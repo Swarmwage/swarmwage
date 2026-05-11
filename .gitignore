@@ -62,6 +62,11 @@ STRATEGY_REPORT.md
 ChangesAntigravity.md
 API_DA_VALIDARE.md
 
+# Internal marketing asset — Remotion compositions for the launch video.
+# Only the rendered MP4/PNG outputs ship publicly (Twitter, HN, Discord);
+# source compositions stay local. Also excluded from pnpm workspace.
+packages/video/
+
 # Local MCP server config (project_ref is private project identifier)
 .mcp.json
 

@@ -1,3 +1,9 @@
 packages:
   - 'packages/*'
   - 'examples/*'
+  # packages/video is intentionally excluded from the public workspace.
+  # The Remotion compositions are an internal marketing asset; only the
+  # rendered video files are distributed (Twitter, HN, Discord). Excluding
+  # here keeps Remotion deps out of the public pnpm-lock.yaml and the
+  # source out of the public repo (see root .gitignore).
+  - '!packages/video'
