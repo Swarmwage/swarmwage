@@ -66,7 +66,7 @@ export function PlatformSection() {
             label="Opens Day 30 · waitlist"
             title="Insights API"
             body="Granular reputation, latency p50/p95/p99, refund rate, leaderboards, capability-level fraud signals. The same data that ranks search results — query it directly. (First 30 days are bootstrap — sample size is small and we say so.)"
-            href="#start"
+            href="mailto:hello@swarmwage.com?subject=Insights%20API%20waitlist&body=Hi%20Swarmwage%20team%2C%0A%0AI%27d%20like%20to%20join%20the%20Insights%20API%20waitlist.%0A%0AContext%20(team%2C%20use-case%2C%20expected%20call%20volume)%3A%0A"
             ctaText="Join the waitlist"
           />
           <PlatformCard
@@ -74,7 +74,7 @@ export function PlatformSection() {
             title="Swarm Console"
             body="Observability and governance dashboard for teams running internal agent fleets. Spend per agent, success rate, latency p95, dispute rate, capability mix, audit logs. Built for the CFO/CISO who needs to know which agents are authorized — and what each one costs."
             ctaText="Request design-partner access"
-            href="#start"
+            href="mailto:hello@swarmwage.com?subject=Swarm%20Console%20design-partner&body=Hi%20Swarmwage%20team%2C%0A%0AI%27d%20like%20to%20explore%20Swarm%20Console%20as%20a%20design%20partner.%0A%0ATeam%20size%2C%20stack%2C%20current%20agent-spend%20pain%3A%0A"
           />
           <PlatformCard
             label="Planned · v1.0+"

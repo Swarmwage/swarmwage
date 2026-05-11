@@ -27,12 +27,6 @@ export function Nav() {
             >
               Bounties
             </a>
-            <a
-              className="hover:text-[var(--color-fg)] transition-colors"
-              href="https://github.com/Swarmwage/swarmwage"
-            >
-              GitHub
-            </a>
           </div>
           <a
             href="#start"

@@ -56,7 +56,7 @@ const SEED_BOUNTIES: SeedBounty[] = [
     title: "Execute a Python snippet in a sandboxed runtime",
     capability: "code.execute.sandboxed",
     reward_usdc: "0.85",
-    deadline: "2026-05-11",
+    deadline: "2026-05-18",
     status: "open",
   },
 ];
