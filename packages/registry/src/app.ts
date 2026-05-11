@@ -25,20 +25,25 @@ import {
 import { MemoryStore } from "./store/memory.js";
 import type { ReceiptRecord, RegistryStore } from "./store/types.js";
 import { verifyTypedPayload } from "./auth.js";
+import { WebhookDispatcher } from "./webhooks.js";
 
 export interface CreateAppOptions {
   store?: RegistryStore;
   /** When false, the HTTP request logger middleware is skipped (test noise). */
   enableRequestLogger?: boolean;
+  /** Outbound webhook dispatcher. When omitted, no webhooks are fired. */
+  webhookDispatcher?: WebhookDispatcher;
 }
 
 export interface CreatedApp {
   app: Hono;
   store: RegistryStore;
+  webhookDispatcher: WebhookDispatcher | undefined;
 }
 
 export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   const store: RegistryStore = opts.store ?? new MemoryStore();
+  const webhookDispatcher = opts.webhookDispatcher;
   const app = new Hono();
 
   if (opts.enableRequestLogger !== false) {
@@ -547,6 +552,28 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
         409,
       );
     }
+
+    // Notify configured webhook receivers. Fire-and-forget — the receipt
+    // submitter does not wait on receiver latency, and receiver failures
+    // do not propagate. Receivers verify integrity via X-Webhook-Signature.
+    if (webhookDispatcher?.enabled()) {
+      webhookDispatcher.fire({
+        event: "receipt.created",
+        receipt_id: result.id,
+        protocol_version: record.protocol_version,
+        hire_id: record.hire_id,
+        agent_id: record.agent_id,
+        buyer: record.buyer,
+        capability: record.capability,
+        capability_version: record.capability_version,
+        amount_usdc_atomic: record.amount_usdc_atomic,
+        network: record.network,
+        tx_hash: record.tx_hash,
+        completed_at: record.completed_at,
+        verification_all_passed: record.verification_all_passed,
+      });
+    }
+
     return c.json({ ok: true, receipt_id: result.id });
   });
 
@@ -577,5 +604,5 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     return c.body(null, 204);
   });
 
-  return { app, store };
+  return { app, store, webhookDispatcher };
 }

@@ -11,6 +11,7 @@ import { createApp } from "./app.js";
 import { loadEnv } from "./env.js";
 import { PostgresStore } from "./store/postgres.js";
 import type { RegistryStore } from "./store/types.js";
+import { parseReceiverUrls, WebhookDispatcher } from "./webhooks.js";
 
 // Skip starting the HTTP server when imported as a library (tests). The
 // `start` and `dev` package scripts run via tsx without setting this flag,
@@ -23,12 +24,24 @@ const store: RegistryStore | undefined = env.databaseUrl
   : undefined;
 const storeKind: "memory" | "postgres" = env.databaseUrl ? "postgres" : "memory";
 
-const { app } = createApp({ store });
+const webhookReceivers = parseReceiverUrls(env.receiptWebhookUrls);
+const webhookDispatcher =
+  webhookReceivers.length > 0 && env.receiptWebhookSecret
+    ? new WebhookDispatcher({
+        receivers: webhookReceivers,
+        secret: env.receiptWebhookSecret,
+      })
+    : undefined;
+
+const { app } = createApp({ store, webhookDispatcher });
 
 if (shouldListen) {
   serve({ fetch: app.fetch, port: env.port }, (info) => {
+    const hooks = webhookDispatcher?.enabled()
+      ? ` webhooks=${webhookReceivers.length}`
+      : "";
     process.stderr.write(
-      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})\n`,
+      `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})${hooks}\n`,
     );
   });
 }
