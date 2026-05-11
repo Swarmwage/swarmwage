@@ -80,12 +80,77 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   // CPU profile as /v1/listings POST.
   app.use("/v1/receipts", floodGuard);
 
+  // Public endpoints surfaced on the root index. Keep this in sync with the
+  // routes registered below — it doubles as both human documentation for
+  // anyone who hits the URL in a browser AND a machine-discoverable manifest
+  // for agents that want to introspect the registry without scraping docs.
+  const PUBLIC_ROUTES = [
+    { method: "GET", path: "/", description: "this index" },
+    { method: "GET", path: "/health", description: "liveness probe" },
+    {
+      method: "POST",
+      path: "/v1/search",
+      description:
+        "Search active listings by capability. Body: { capability, match?: 'exact'|'prefix', max_price_usdc?, max_latency_ms?, min_success_rate?, min_avg_stars?, limit? }",
+    },
+    {
+      method: "GET",
+      path: "/v1/listings",
+      description:
+        "Recipient → agent_id lookup when ?recipient=0x... is supplied. With no query param, returns this index.",
+    },
+    {
+      method: "POST",
+      path: "/v1/listings",
+      description: "Publish a signed listing.",
+    },
+    {
+      method: "GET",
+      path: "/v1/agents/:id/listings",
+      description: "All active listings for a seller.",
+    },
+    {
+      method: "GET",
+      path: "/v1/agents/:id/receipts",
+      description: "Recent receipts submitted by a seller.",
+    },
+    {
+      method: "GET",
+      path: "/v1/agents/:id/reputation",
+      description: "Aggregate reputation for an agent.",
+    },
+    {
+      method: "POST",
+      path: "/v1/receipts",
+      description: "Submit a seller-signed receipt (Layer 3 data capture).",
+    },
+    {
+      method: "POST",
+      path: "/v1/rate",
+      description: "Consume a rating token and record stars + comment.",
+    },
+    {
+      method: "POST",
+      path: "/v1/claim",
+      description: "Begin a tweet-based agent identity claim.",
+    },
+    {
+      method: "POST",
+      path: "/v1/claim/verify",
+      description: "Finalise a tweet-based claim by verification hash.",
+    },
+  ] as const;
+  const SPEC_URL =
+    "https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/SPEC.md";
+
   app.get("/", (c) =>
     c.json({
       name: "swarmwage-registry",
       version: "0.0.1",
       protocol: PROTOCOL_VERSION,
       repository: "https://github.com/Swarmwage/swarmwage",
+      docs: SPEC_URL,
+      routes: PUBLIC_ROUTES,
     }),
   );
 
@@ -96,7 +161,15 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   // -----------------------------------------------------------------------
 
   const SearchSchema = z.object({
-    capability: z.string(),
+    capability: z.string().min(1),
+    // `match` controls how the capability string is interpreted.
+    // - "exact"  (default): listings.capability === req.capability.
+    // - "prefix": listings.capability startsWith req.capability. Useful for
+    //   marketed shorthand like `audio.transcribe` (matches the canonical
+    //   `audio.transcribe.json-with-timestamps`).
+    // Default kept as "exact" for backwards compatibility with existing
+    // SDK / MCP / facilitator callers.
+    match: z.enum(["exact", "prefix"]).optional().default("exact"),
     max_price_usdc: z.string().optional(),
     max_latency_ms: z.number().int().positive().optional(),
     min_success_rate: z.number().min(0).max(1).optional(),
@@ -114,8 +187,12 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
         400,
       );
     }
-    const agents = await store.search(parsed.data);
-    return c.json({ agents, next_cursor: null });
+    const { match, ...searchReq } = parsed.data;
+    const agents =
+      match === "prefix"
+        ? await store.searchByCapabilityPrefix(searchReq)
+        : await store.search(searchReq);
+    return c.json({ agents, next_cursor: null, match });
   });
 
   // -----------------------------------------------------------------------
@@ -167,11 +244,38 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   //   400                           — missing or malformed recipient
   app.get("/v1/listings", async (c) => {
     const recipient = c.req.query("recipient");
+    // No query params at all: return a documented index instead of 400.
+    // Visitors who curl the bare endpoint discover the route surface,
+    // example `POST /v1/search` invocation, and how many distinct
+    // capabilities the registry currently indexes.
     if (!recipient) {
-      return c.json(
-        { error: "Missing required query param: recipient" },
-        400,
-      );
+      const capability_count = await store.countCapabilities();
+      return c.json({
+        name: "swarmwage-registry",
+        endpoint: "/v1/listings",
+        description:
+          "GET this endpoint with ?recipient=0x... to resolve a payment recipient to an agent_id. POST to publish a signed listing. To search the active catalogue, POST /v1/search instead.",
+        capability_count,
+        routes: PUBLIC_ROUTES,
+        docs: SPEC_URL,
+        examples: {
+          search_exact: {
+            method: "POST",
+            url: "/v1/search",
+            curl: "curl -X POST https://api.swarmwage.com/v1/search -H 'Content-Type: application/json' -d '{\"capability\":\"audio.transcribe.json-with-timestamps\"}'",
+          },
+          search_prefix: {
+            method: "POST",
+            url: "/v1/search",
+            curl: "curl -X POST https://api.swarmwage.com/v1/search -H 'Content-Type: application/json' -d '{\"capability\":\"audio.transcribe\",\"match\":\"prefix\"}'",
+          },
+          recipient_lookup: {
+            method: "GET",
+            url: "/v1/listings?recipient=0xabc...123",
+            curl: "curl https://api.swarmwage.com/v1/listings?recipient=0xabc...123",
+          },
+        },
+      });
     }
     if (!/^0x[a-fA-F0-9]{40}$/.test(recipient)) {
       return c.json({ error: "Invalid recipient address" }, 400);

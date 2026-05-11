@@ -102,9 +102,36 @@ export class MemoryStore implements RegistryStore {
   }
 
   async search(req: SearchRequest): Promise<SearchResultEntry[]> {
+    return this.searchInternal(req, (cap) => cap === req.capability);
+  }
+
+  async searchByCapabilityPrefix(
+    req: SearchRequest,
+  ): Promise<SearchResultEntry[]> {
+    return this.searchInternal(req, (cap) => cap.startsWith(req.capability));
+  }
+
+  async countCapabilities(): Promise<number> {
+    const set = new Set<string>();
+    for (const listing of this.listings.values()) {
+      set.add(listing.capability);
+    }
+    return set.size;
+  }
+
+  /**
+   * Shared search core. Applies non-capability filters identically across
+   * exact + prefix variants; the only thing that varies is how the
+   * capability string is matched. Keeping this in one place ensures
+   * `searchByCapabilityPrefix` cannot drift away from `search`.
+   */
+  private async searchInternal(
+    req: SearchRequest,
+    capabilityMatches: (cap: string) => boolean,
+  ): Promise<SearchResultEntry[]> {
     const results: SearchResultEntry[] = [];
     for (const listing of this.listings.values()) {
-      if (listing.capability !== req.capability) continue;
+      if (!capabilityMatches(listing.capability)) continue;
       if (
         req.max_price_usdc !== undefined &&
         Number(listing.price_usdc) > Number(req.max_price_usdc)

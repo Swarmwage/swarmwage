@@ -207,6 +207,33 @@ export class PostgresStore implements RegistryStore {
   }
 
   async search(req: SearchRequest): Promise<SearchResultEntry[]> {
+    return this.searchInternal(req, "exact");
+  }
+
+  async searchByCapabilityPrefix(
+    req: SearchRequest,
+  ): Promise<SearchResultEntry[]> {
+    return this.searchInternal(req, "prefix");
+  }
+
+  async countCapabilities(): Promise<number> {
+    const rows = await this.sql<{ count: string }[]>`
+      SELECT COUNT(DISTINCT capability)::text AS count
+      FROM listings
+      WHERE active
+    `;
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  /**
+   * Shared search core. Capability match swaps between `=` and `LIKE prefix%`
+   * based on the `mode` flag; all other filters are identical so the two
+   * variants cannot drift apart.
+   */
+  private async searchInternal(
+    req: SearchRequest,
+    mode: "exact" | "prefix",
+  ): Promise<SearchResultEntry[]> {
     // Single round-trip: listings JOIN reputation view, with the
     // protocol filters applied in SQL. Sorts the same way the in-memory
     // store does: avg_stars * last_30d_hire_count DESC, price ASC.
@@ -216,6 +243,12 @@ export class PostgresStore implements RegistryStore {
     const maxLatency = req.max_latency_ms ?? null;
     const minSuccess = req.min_success_rate ?? null;
     const minStars = req.min_avg_stars ?? null;
+    // Escape LIKE wildcards (`%`, `_`, `\`) so a capability like
+    // `foo_bar` isn't interpreted as a wildcard pattern. ESCAPE clause
+    // below picks up the literal backslash.
+    const prefixPattern =
+      req.capability.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_") +
+      "%";
 
     const rows = await this.sql<(ListingRow & ReputationRow)[]>`
       SELECT
@@ -231,7 +264,11 @@ export class PostgresStore implements RegistryStore {
       FROM listings l
       JOIN reputation r ON r.agent_id = l.agent_id
       WHERE l.active
-        AND l.capability = ${req.capability}
+        AND (
+          (${mode} = 'exact'  AND l.capability = ${req.capability})
+          OR
+          (${mode} = 'prefix' AND l.capability LIKE ${prefixPattern} ESCAPE '\\')
+        )
         AND (${maxPrice}::numeric IS NULL OR l.price_usdc::numeric <= ${maxPrice}::numeric)
         AND (${maxLatency}::integer IS NULL OR l.max_latency_ms <= ${maxLatency}::integer)
         AND (${minSuccess}::float IS NULL OR r.success_rate >= ${minSuccess}::float)

@@ -92,9 +92,23 @@ export interface RegistryStore {
   // Listings
   upsertListing(listing: Listing): Promise<void>;
   search(req: SearchRequest): Promise<SearchResultEntry[]>;
+  /**
+   * Prefix-match variant of `search`: returns all active listings whose
+   * `capability` starts with `req.capability`. All other filter fields
+   * (`max_price_usdc`, `max_latency_ms`, `min_success_rate`, `min_avg_stars`,
+   * `limit`) apply identically. Used by `POST /v1/search` when the request
+   * carries `match: "prefix"`.
+   */
+  searchByCapabilityPrefix(req: SearchRequest): Promise<SearchResultEntry[]>;
   getListing(agentId: AgentId, capability: CapabilityId): Promise<Listing | null>;
   /** All listings for a single seller (read-only, no signature required). */
   getListingsByAgent(agentId: AgentId): Promise<Listing[]>;
+  /**
+   * Count of distinct `capability` strings across active listings. Powers
+   * the `GET /v1/listings` documentation index so callers see how rich the
+   * catalogue currently is.
+   */
+  countCapabilities(): Promise<number>;
 
   // Hires (written by indexer in production; insertable here for tests)
   recordHire(hire: HireRecord): Promise<void>;
