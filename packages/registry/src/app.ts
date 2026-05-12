@@ -323,7 +323,12 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       }),
     currency: z.literal("USDC").default("USDC"),
     chain: z.literal("base").default("base"),
-    max_latency_ms: z.number().int().positive(),
+    // Bounded latency advertisement. Lower bound rejects ranking-gaming
+    // (a seller cannot advertise `1` to look fastest in search). Upper
+    // bound stops Postgres integer overflow on absurd values like
+    // 999999999999999 (PG `integer` is signed 32-bit, max ~2.1e9) which
+    // would crash the listings INSERT with HTTP 500.
+    max_latency_ms: z.number().int().min(100).max(60000),
     first_call_free: z.boolean().default(false),
     // HTTPS-only + no SSRF. Plain http:// would let an in-path attacker
     // intercept EIP-3009 payment authorization headers; endpoints pointing
@@ -341,6 +346,46 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
     signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
   });
 
+  // Per-agent_id publish rate limit. The IP-based floodGuard above
+  // already caps overall publish throughput; this catches the attacker
+  // who rotates IPs but cannot cheaply rotate agent_ids (each new
+  // agent_id requires a fresh wallet AND a fresh signed payload). 10
+  // publishes per minute per agent_id is generous — a legit seller
+  // restarts at most a few times a day.
+  const PUBLISH_BURST_PER_AGENT = 10;
+  const PUBLISH_REFILL_PER_SEC = 10 / 60; // 1 token every 6 s
+  const publishBuckets = new Map<
+    string,
+    { tokens: number; updatedAt: number }
+  >();
+  function consumePublishToken(agentId: string): {
+    ok: boolean;
+    retryAfter: number;
+  } {
+    const now = Date.now();
+    const key = agentId.toLowerCase();
+    const cur = publishBuckets.get(key) ?? {
+      tokens: PUBLISH_BURST_PER_AGENT,
+      updatedAt: now,
+    };
+    const elapsed = (now - cur.updatedAt) / 1000;
+    cur.tokens = Math.min(
+      PUBLISH_BURST_PER_AGENT,
+      cur.tokens + elapsed * PUBLISH_REFILL_PER_SEC,
+    );
+    cur.updatedAt = now;
+    if (cur.tokens < 1) {
+      publishBuckets.set(key, cur);
+      return {
+        ok: false,
+        retryAfter: Math.ceil((1 - cur.tokens) / PUBLISH_REFILL_PER_SEC),
+      };
+    }
+    cur.tokens -= 1;
+    publishBuckets.set(key, cur);
+    return { ok: true, retryAfter: 0 };
+  }
+
   app.post("/v1/listings", async (c) => {
     const body = await c.req.json();
     const parsed = ListingSchema.safeParse(body);
@@ -351,6 +396,20 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       );
     }
     const listing = parsed.data as Listing;
+
+    // Per-agent_id rate limit — applied BEFORE signature verification
+    // because signature recovery is the CPU-heavy step we want to spare.
+    const gate = consumePublishToken(listing.agent_id);
+    if (!gate.ok) {
+      c.header("Retry-After", String(gate.retryAfter));
+      return c.json(
+        {
+          error: "Publish rate limit exceeded for this agent_id",
+          retry_after_seconds: gate.retryAfter,
+        },
+        429,
+      );
+    }
 
     // Verify signature
     const { signature, ...payload } = listing;
@@ -494,45 +553,40 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   // Rating
   // -----------------------------------------------------------------------
 
+  // Comment angle-bracket guard: stops HTML/<script> tags from being
+  // persisted into the future leaderboard render. Activates only when
+  // Phase 1.4 re-enables the endpoint; today /v1/rate short-circuits
+  // with HTTP 503 (see below).
   const RateSchema = z.object({
     rating_token: z.string().min(1),
     stars: z.number().int().min(1).max(5),
     latency_ms: z.number().int().positive().optional(),
-    comment: z.string().max(1024).optional(),
+    comment: z
+      .string()
+      .max(1024)
+      .regex(/^[^<>]*$/, "comment must not contain '<' or '>'")
+      .optional(),
   });
+  void RateSchema; // keep ts-pruned alive — referenced when /v1/rate re-enables
 
-  app.post("/v1/rate", async (c) => {
-    const body = await c.req.json();
-    const parsed = RateSchema.safeParse(body);
-    if (!parsed.success) {
-      return c.json(
-        { error: "Invalid rate request", issues: parsed.error.issues },
-        400,
-      );
-    }
-    const { rating_token, stars, latency_ms, comment } = parsed.data;
-
-    if (await store.isRatingTokenUsed(rating_token)) {
-      return c.json({ error: "Rating token already used" }, 409);
-    }
-
-    // In production: decode rating_token to recover (rater_id, rated_id, receipt_id).
-    // v0.0.1: tokens are opaque from our perspective; the indexer issues them.
-    // For dev we just store the raw record; integration with on-chain receipts
-    // lands in Phase 1.4.
-    await store.consumeRatingTokenAndStore({
-      rating_token,
-      receipt_id: rating_token,
-      rater_id: "0x0000000000000000000000000000000000000000" as AgentId,
-      rated_id: "0x0000000000000000000000000000000000000000" as AgentId,
-      stars: stars as Stars,
-      latency_ms,
-      comment,
-      created_at: Date.now(),
-    });
-
-    return c.json({ ok: true });
-  });
+  // Rating endpoint disabled until Phase 1.4 ships the rating_token
+  // decoder. Today the handler stored placeholder zero-address
+  // rater_id/rated_id for every consumed token, so the API was lying
+  // (`success: true` on any string) AND silently burning token slots
+  // that real receipts will later need. Returning 503 with a structured
+  // error stops the dishonest acknowledgement without breaking the
+  // route surface for clients that already wire it up.
+  app.post("/v1/rate", (c) =>
+    c.json(
+      {
+        ok: false,
+        error:
+          "Rating system not yet enabled — pending Phase 1.4 rating_token decoder",
+        retry: false,
+      },
+      503,
+    ),
+  );
 
   // -----------------------------------------------------------------------
   // Claim flow
