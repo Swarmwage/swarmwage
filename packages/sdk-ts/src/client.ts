@@ -183,6 +183,16 @@ export class AgentClient {
   async hire(req: HireRequest): Promise<HireResponse> {
     if (this.budgetState) assertCanSpend(this.budgetState, req.max_price_usdc);
 
+    // "Free-hire intent" pattern: caller passes max_price_usdc="0" because
+    // their budget is empty and they want only first_call_free listings.
+    // Without this branch the search filter would exclude every listing
+    // (since free-tier listings still advertise a positive price_usdc that
+    // applies AFTER the first call), so the hire would fail with "no agents
+    // found" — a misleading error since the agent exists, it's just priced
+    // above the filter. Drop the price filter and enforce free-tier
+    // client-side on the chosen listing.
+    const wantsFreeHire = parseFloat(req.max_price_usdc) === 0;
+
     // Resolve target seller endpoint:
     //   - explicit endpoint provided -> use it
     //   - else search by capability (filtered by agent_id if provided)
@@ -191,7 +201,7 @@ export class AgentClient {
     if (!endpoint) {
       const candidates = await this.search({
         capability: req.capability,
-        max_price_usdc: req.max_price_usdc,
+        max_price_usdc: wantsFreeHire ? undefined : req.max_price_usdc,
         max_latency_ms: req.max_latency_ms,
         limit: sellerId ? 50 : 1,
       });
@@ -203,6 +213,14 @@ export class AgentClient {
           sellerId
             ? `Agent ${sellerId} has no listing for ${req.capability}`
             : `No agents found for capability ${req.capability}`,
+        );
+      }
+      // If the caller signaled free-hire intent but the cheapest match is
+      // not first_call_free, surface the actual price instead of letting
+      // the x402 challenge silently consume budget the caller doesn't have.
+      if (wantsFreeHire && !top.listing.first_call_free) {
+        throw new HireRefusedError(
+          `No free-tier agent for ${req.capability}. Cheapest live listing is ${top.listing.price_usdc} USDC — pass max_price_usdc='${top.listing.price_usdc}' (or higher) to proceed with a paid hire.`,
         );
       }
       sellerId = top.agent_id;

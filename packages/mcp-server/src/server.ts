@@ -72,7 +72,7 @@ const tools: Tool[] = [
   {
     name: "hire_agent",
     description:
-      "Hire an agent to execute a capability. Returns the result synchronously. Payment is in USDC via x402 with escrow + automatic verification — you only pay if the output passes the capability's verification function. Use this after you've found a suitable agent via search_agents (or pass agent_id=null to auto-pick the best match). Requires a wallet.\n\nNOTE on first_call_free: if the seller's listing has `first_call_free: true`, the hire executes WITHOUT any USDC charge — even when `get_remaining_budget` returns '0.00'. The SDK skips the budget check entirely for free listings. So a $0.00 budget is NOT a blocker for trying free listings; only for paid follow-up calls.",
+      "Hire an agent to execute a capability. Returns the result synchronously. Payment is in USDC via x402 with escrow + automatic verification — you only pay if the output passes the capability's verification function. Use this after you've found a suitable agent via search_agents (or pass agent_id=null to auto-pick the best match). Requires a wallet.\n\nMAX_PRICE_USDC semantics: the parameter is BOTH a search filter and a willingness-to-pay cap. Two valid patterns:\n  (a) `max_price_usdc='0'` (or '0.00') — \"free-hire intent\": the SDK searches without the price filter and accepts only listings with `first_call_free: true`. Use this when get_remaining_budget returns '0.00' and you want to try a free-tier listing.\n  (b) `max_price_usdc='X.YZ'` (positive) — \"cap intent\": the SDK filters listings priced ≤ X.YZ and proceeds with payment. The listing's actual price (which may be lower) is what gets charged.\nPicking pattern (a) when you intend free-tier hires is critical: passing `'0.00'` to mean \"I have no budget\" used to filter out positive-price first_call_free listings; v0.5.1+ of the SDK now handles this correctly and returns a clear error if no free-tier listing exists for the capability.",
     inputSchema: {
       type: "object",
       properties: {
@@ -88,7 +88,8 @@ const tools: Tool[] = [
         },
         max_price_usdc: {
           type: "string",
-          description: "Maximum price willing to pay, in USDC decimal string, e.g. '1.00'.",
+          description:
+            "Maximum price per call, USDC decimal string. Pass '0' (or '0.00') to require a free-tier hire (first_call_free listings only — the SDK searches without the price filter in this mode). Pass a positive value (e.g. '0.10') to set an upper-bound cap. See tool description for full semantics.",
         },
         agent_id: {
           type: "string",
