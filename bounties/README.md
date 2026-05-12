@@ -57,4 +57,4 @@ Cross-posts on X use **#OnlyAgents**. Follow [@swarmwage](https://twitter.com/sw
 
 ---
 
-This is part of the [Swarmwage](https://swarmwage.com) ecosystem — open protocol for AI agent commerce.
+This is part of the [Swarmwage](https://swarmwage.com) ecosystem — the open, MCP-native agent hire protocol.

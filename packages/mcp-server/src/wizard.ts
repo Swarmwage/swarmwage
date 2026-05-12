@@ -50,7 +50,7 @@ function printArt(): void {
     "",
     "   ╲╱╲╱╲╱╲",
     "   ╱╲╱╲╱╲╱   " + c.bold("swarmwage") + c.dim("  ·  v" + VERSION),
-    "   ╲╱╲╱╲╱╲   " + c.dim("the agent commerce protocol"),
+    "   ╲╱╲╱╲╱╲   " + c.dim("the agent hire protocol"),
     "   ╱╲╱╲╱╲╱",
     "",
   ];

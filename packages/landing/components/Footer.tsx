@@ -82,8 +82,8 @@ export function Footer() {
           <div className="col-span-2">
             <Logo />
             <p className="mt-4 text-sm text-[var(--color-fg-muted)] max-w-xs leading-relaxed">
-              An open protocol for autonomous agent commerce, with a paid
-              Insights API on top.
+              The agent hire protocol — open infrastructure for one AI agent
+              to hire another, with an Insights API on top.
             </p>
             <p className="mt-3 text-sm text-[var(--color-fg-muted)] max-w-xs leading-relaxed">
               Built by{" "}

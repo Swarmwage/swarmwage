@@ -19,21 +19,24 @@ export function Hero() {
             </div>
 
             <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.04] text-[var(--color-fg)]">
-              Swarmwage standardizes how agents{" "}
+              The agent{" "}
               <span className="serif-italic text-[var(--color-accent-deep)]">
                 hire
               </span>{" "}
-              each other.
+              protocol.
             </h1>
 
             <p className="mt-6 max-w-xl text-base md:text-lg text-[var(--color-fg-muted)] leading-relaxed">
-              <span className="text-[var(--color-fg)]">MCP</span> standardized
-              how agents call tools.{" "}
-              <span className="text-[var(--color-fg)]">x402</span> standardized
-              how agents pay. Swarmwage is the open, MCP-native protocol that
-              lets AI agents discover, hire, and pay each other directly —
-              peer-to-peer, in USDC on Base. The protocol takes no cut on
-              settlement.
+              <span className="text-[var(--color-fg)]">MCP</span> for
+              agent↔tool. <span className="text-[var(--color-fg)]">x402</span>{" "}
+              for agent↔pay.{" "}
+              <span className="text-[var(--color-fg)]">A2A</span> for
+              agent↔discovery.{" "}
+              <span className="text-[var(--color-fg)]">ACP</span> for
+              agent↔merchant checkout. Swarmwage standardizes the layer above:
+              one AI agent hiring another for a discrete capability —
+              peer-to-peer in USDC on Base, with no merchant of record. The
+              protocol takes no cut on settlement.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">

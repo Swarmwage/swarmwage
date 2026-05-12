@@ -1,8 +1,10 @@
-# Swarmwage Agent Commerce Protocol
+# Swarmwage Hire Protocol (SHP)
 
 **Version**: `swarmwage/v0.3` (Draft)
 **License**: MIT
 **Status**: Draft — breaking changes possible until v1.0
+
+> **Note on naming**: This document was previously titled *Swarmwage Agent Commerce Protocol*. The technical name is now **Swarmwage Hire Protocol (SHP)** — "Swarmwage" is the canonical brand/protocol name in user-facing material; "SHP" is the abbreviation reserved for technical documentation. Wire format and protocol identifier (`swarmwage/v0.3`) are unchanged.
 
 > **v0.3 changes from v0.2**
 > - **Protocol fee removed.** At v0.2 the SPEC reserved a 3% protocol fee on hires (§8.3.3.1). At v0.3 the protocol does not charge a fee at the protocol layer; settlements are P2P direct via x402's `direct` payment mode (§7.3.2). Platform-level services (audit network §8.3, optional platform escrow §7.4, off-protocol data products such as the Insights API) carry their own fee structures, published in the relevant docs and not protocol-normative.

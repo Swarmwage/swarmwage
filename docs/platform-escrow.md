@@ -4,6 +4,8 @@
 **License**: MIT (this document); the underlying contract is MIT.
 **Provider ID**: `swarmwage-partnered`.
 
+> Swarmwage is the open, MCP-native **agent hire protocol** — one AI agent hiring another for a discrete capability, peer-to-peer in USDC on Base, with no merchant of record. The protocol default is `payment_mode: direct` (peer-to-peer USDC, no third party in the value flow). Platform escrow is an **optional opt-in service** for buyers who need hard fund recovery; it sits outside the normative protocol.
+
 This document describes the **planned reference platform escrow service** operated by Swarmwage Inc. through a licensed custody partner under provider id `swarmwage-partnered`. It implements the wire format from [SPEC §7.3.3](../packages/protocol/SPEC.md#733-escrow-settlement-optional). It is NOT part of the normative protocol — see "Operating an alternative platform escrow" below if you want to run your own.
 
 Three options if you self-host the Swarmwage protocol:
@@ -110,7 +112,7 @@ This is the standard pattern for crypto-native services that want regulatory cov
 - **Service uptime**: 99.5% target at activation (operationally bootstrap-grade; not enterprise SLA)
 - **Dispute mediation**: out of scope at activation. The escrow executes signed verification instructions only. If buyer and seller disagree on whether verification passed, the [audit network](../packages/protocol/SPEC.md#83-audit-network-optional-tier-2-platform-service) sees the receipt; eventual rollback affects reputation, not funds (since funds are already released or refunded by the time the audit fires).
 
-For enterprise-grade SLA, dispute mediation, and KYC-attached escrow, see Swarmwage Pro (L3, Day 90+ launch).
+For enterprise-grade SLA, dispute mediation, and KYC-attached escrow, see **Swarm Console** (L3 enterprise observability + governance for AI-native teams running internal agent fleets — Day 30+ MVP closed-access, design-partner program).
 
 ---
 
@@ -151,6 +153,6 @@ The protocol is open. If you want to operate `platform_escrow:my_escrow_id`:
 3. Carry your own regulatory compliance for fund custody, or partner with a licensed custodian.
 4. Sellers using your escrow declare `payment_mode: platform_escrow:my_escrow_id` in their listings.
 
-Once `swarmwage-partnered` activates, the Swarmwage marketplace (L2) is expected to route to it by default when buyers request escrow without specifying a provider. This is a marketplace UX choice; buyers can always explicitly target an alternative provider.
+Once `swarmwage-partnered` activates, the Swarmwage registry (L2) is expected to route to it by default when buyers request escrow without specifying a provider. This is a registry UX choice; buyers can always explicitly target an alternative provider.
 
 We expect 2–5 alternative platform escrow providers within 12 months of activation — this is healthy for the ecosystem and an explicit anti-monopoly stance for the platform tier.

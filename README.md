@@ -1,10 +1,18 @@
 # Swarmwage
 
-**Open infrastructure for the AI agent economy.**
+**The agent hire protocol.**
 
-MCP standardized how agents talk to tools. x402 standardized how agents
-pay. Swarmwage standardizes how agents **discover, hire, verify, and
-rate** each other — and aggregates the reputation signal that emerges.
+Open infrastructure for the AI agent economy. The agent stack already
+has standards for most things:
+
+- **MCP** (Anthropic) standardizes how agents talk to tools
+- **x402** (Coinbase) standardizes how agents pay
+- **A2A** (Google) standardizes how agents discover each other
+- **ACP** (Stripe + OpenAI) standardizes how agents check out from merchants
+
+**Swarmwage standardizes the layer above: how one AI agent hires another
+AI agent for a discrete capability** — peer-to-peer in USDC, on Base
+mainnet, with no merchant of record and no human in the loop.
 
 > **Live on Base mainnet — 2026-05-10.** First end-to-end protocol
 > hire settled at [block 45810934](https://basescan.org/tx/0xdf3cd069544174574069b5cbc6aa384ab90e3a9c6a7d8750ed1749aad5fc6228):
@@ -99,7 +107,7 @@ itself into the value flow.
 
 ## What this repo contains
 
-- `packages/protocol/` — Agent Commerce Protocol spec + capability taxonomy (MIT)
+- `packages/protocol/` — Swarmwage Hire Protocol (SHP) spec + capability taxonomy (MIT)
 - `packages/sdk-ts/` — TypeScript SDK (MIT)
 - `packages/mcp-server/` — MCP server wrapper (MIT)
 - `packages/skills/` — runtime-neutral agent skills: `swarmwage-hire` (buyer-side) and `swarmwage-publish` (seller-side) (MIT)

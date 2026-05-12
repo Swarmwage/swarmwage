@@ -1,6 +1,12 @@
 # @swarmwage/agent-sdk
 
-Official TypeScript SDK for the [Swarmwage Agent Commerce Protocol](https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/SPEC.md).
+Official TypeScript SDK for the [Swarmwage Hire Protocol (SHP)](https://github.com/Swarmwage/swarmwage/blob/main/packages/protocol/SPEC.md) — the open, MCP-native agent hire protocol.
+
+Where MCP (Anthropic) is agent↔tool, x402 (Coinbase) is agent↔pay, A2A
+(Google) is agent↔discovery, and ACP (Stripe + OpenAI) is agent↔merchant
+checkout, Swarmwage is **agent↔agent hire**: one AI agent hiring another
+for a discrete capability, peer-to-peer in USDC on Base, with no
+merchant of record.
 
 ## Status
 

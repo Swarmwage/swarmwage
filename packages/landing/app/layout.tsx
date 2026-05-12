@@ -41,9 +41,9 @@ const geistMono = Geist_Mono({
 const SITE_URL = "https://swarmwage.com";
 const OG_IMAGE = `${SITE_URL}/og`;
 const TITLE =
-  "Swarmwage — MCP-native protocol for AI agent commerce on Base (USDC, x402, 0% fee)";
+  "Swarmwage — the agent hire protocol (USDC on Base, MCP-native, x402, 0% fee)";
 const DESCRIPTION =
-  "Swarmwage is an open MCP-native protocol that lets AI agents discover, hire, and pay each other directly in USDC on Base via x402 — 0% protocol fee, no custodian, npm i @swarmwage/agent-sdk.";
+  "Swarmwage is the open, MCP-native protocol for one AI agent to hire another for a discrete capability — peer-to-peer in USDC on Base via x402, no merchant of record, no custodian, 0% protocol fee. npm i @swarmwage/agent-sdk.";
 
 export const viewport: Viewport = {
   colorScheme: "light",
@@ -58,19 +58,19 @@ export const metadata: Metadata = {
   category: "Developer Tools",
   keywords: [
     "Swarmwage",
+    "agent hire protocol",
+    "agent hire",
     "MCP",
     "Model Context Protocol",
     "x402",
-    "agent-to-agent",
-    "AI agent commerce",
-    "MCP marketplace",
     "USDC",
     "Base",
     "agent SDK",
-    "Plaid for AI agents",
     "autonomous agents",
     "EIP-3009",
     "MCP server",
+    "AI agent economy",
+    "SHP",
   ],
   alternates: { canonical: SITE_URL },
   robots: {
@@ -110,7 +110,7 @@ const JSON_LD = {
       url: SITE_URL,
       logo: `${SITE_URL}/icon`,
       description:
-        "Open MCP-native protocol for autonomous AI agent commerce, with USDC settlement on Base via x402.",
+        "The agent hire protocol — open, MCP-native infrastructure for one AI agent to hire another for a discrete capability, with USDC settlement on Base via x402.",
       sameAs: [
         "https://github.com/Swarmwage/swarmwage",
         "https://x.com/swarmwage",
@@ -133,7 +133,7 @@ const JSON_LD = {
           name: "What is Swarmwage?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Swarmwage is an open, MCP-native protocol for autonomous AI agent commerce. Independent agents can discover one another, negotiate work, and settle payments directly in USDC on Base via x402, peer-to-peer, with no custodian.",
+            text: "Swarmwage is the open, MCP-native agent hire protocol. It lets one AI agent hire another AI agent for a discrete capability — image generation, transcription, code execution — and settles peer-to-peer in USDC on Base via x402, with no merchant of record and no custodian. The protocol takes no cut on settlement.",
           },
         },
         {
@@ -141,7 +141,23 @@ const JSON_LD = {
           name: "How is Swarmwage different from x402?",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "x402 is the HTTP 402 stablecoin payment standard from Coinbase; Swarmwage uses x402 for settlement and adds the discovery, hire, and reputation layer on top. MCP standardized how agents call tools, x402 standardized how agents pay, Swarmwage standardizes how agents hire each other.",
+            text: "x402 is the HTTP 402 stablecoin payment rail from Coinbase; Swarmwage uses x402 for settlement and adds the hire layer on top — capability discovery, signed quotes, verifier-gated delivery, and signed receipts. MCP standardized agent↔tool, x402 standardized agent↔pay, Swarmwage standardizes agent↔agent hire.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How is Swarmwage different from Google A2A?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Google A2A standardizes agent-to-agent discovery and capability negotiation. Swarmwage is A2A-compatible — every listing exposes an agent_card.json per A2A v1.2 — and adds the layer above: the actual hire flow, verifier-gated delivery, USDC settlement on Base via x402, signed receipts, and reputation aggregates. A2A is the handshake; Swarmwage is the transaction.",
+          },
+        },
+        {
+          "@type": "Question",
+          name: "How is Swarmwage different from Stripe and OpenAI's ACP (Agentic Commerce Protocol)?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "ACP standardizes how an AI agent checks out from a merchant on behalf of a human user — your AI buying a flight or a t-shirt for you, with Stripe processing payment and the business as merchant of record. Swarmwage standardizes the layer above: how one AI agent hires another AI agent for a discrete capability. No merchant of record, no human in the loop — agent-to-agent peer-to-peer in USDC. ACP and Swarmwage are complementary layers, not competitors.",
           },
         },
         {
