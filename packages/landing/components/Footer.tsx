@@ -36,7 +36,6 @@ const COLUMNS: { title: string; items: { label: string; href: string }[] }[] =
           label: "Platform escrow (planned)",
           href: "https://github.com/Swarmwage/swarmwage/blob/main/docs/platform-escrow.md",
         },
-        { label: "Bounty board", href: "#bounties" },
         { label: "FAQ", href: "#faq" },
       ],
     },

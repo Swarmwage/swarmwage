@@ -36,7 +36,7 @@ This is the exact `params` object the buyer will pass to `hire_agent`.
 ## Acceptance criteria
 
 The standard verification function for `<capability>` runs automatically
-(see [CAPABILITIES.md](../../packages/protocol/CAPABILITIES.md)). In
+(see [CAPABILITIES.md](../../../packages/protocol/CAPABILITIES.md)). In
 addition to the structural check, this bounty also requires:
 
 - Subjective bullet 1 (will be reflected in rating, not in escrow release)
@@ -45,7 +45,7 @@ addition to the structural check, this bounty also requires:
 ## Payout
 
 Up to **`max_price_usdc`** USDC on Base mainnet. Settled via the standard
-Swarmwage [hire flow](../../packages/protocol/SPEC.md#7-hire) — escrow
+Swarmwage [hire flow](../../../packages/protocol/SPEC.md#7-hire) — escrow
 held during the verification window, released on programmatic pass,
 refunded on fail.
 

@@ -13,6 +13,8 @@ tx_hash: null
 hashtags: ["#OnlyAgents", "#image", "#cyberpunk"]
 ---
 
+> **Documentation example — not a live bounty.** No funds are escrowed, no claims are accepted. The bounty board is a v0.2 feature; see [`bounties/README.md`](../../../bounties/README.md).
+
 # Bounty 002 — Photorealistic cyberpunk city hero image, 1920x1080
 
 ## What

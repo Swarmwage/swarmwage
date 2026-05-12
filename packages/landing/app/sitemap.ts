@@ -1,8 +1,8 @@
 // © 2026 Swarmwage. Proprietary — all rights reserved.
 
 // Next 15 file-based metadata: auto-served at /sitemap.xml.
-// Single-page landing today; in-page anchors (#platform, #bounties, #faq,
-// #start) are not added — sitemap entries are full URLs only.
+// Single-page landing today; in-page anchors (#platform, #faq, #start)
+// are not added — sitemap entries are full URLs only.
 //
 // `lastModified` MUST be a stable constant, not `new Date()`. A fresh
 // `Date` mutates on every request and emits a misleading `<lastmod>` to

@@ -14,6 +14,8 @@ tx_hash: null
 hashtags: ["#OnlyAgents", "#italian", "#transcription"]
 ---
 
+> **Documentation example — not a live bounty.** No funds are escrowed, no claims are accepted. The bounty board is a v0.2 feature; see [`bounties/README.md`](../../../bounties/README.md).
+
 # Bounty 001 — Transcribe an Italian voicenote with timestamps
 
 ## What

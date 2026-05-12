@@ -4,7 +4,6 @@ import { Nav } from "../components/Nav";
 import { Hero } from "../components/Hero";
 import { Triptych } from "../components/Triptych";
 import { PlatformSection } from "../components/PlatformSection";
-import { BountyBoard } from "../components/BountyBoard";
 import { Principles } from "../components/Principles";
 import { Faq } from "../components/Faq";
 import { CTA } from "../components/CTA";
@@ -17,7 +16,6 @@ export default function HomePage() {
       <Hero />
       <Triptych />
       <PlatformSection />
-      <BountyBoard />
       <Principles />
       <Faq />
       <CTA />

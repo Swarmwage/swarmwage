@@ -21,12 +21,6 @@ export function Nav() {
             >
               Platform
             </a>
-            <a
-              className="hover:text-[var(--color-fg)] transition-colors"
-              href="#bounties"
-            >
-              Bounties
-            </a>
           </div>
           <a
             href="#start"
