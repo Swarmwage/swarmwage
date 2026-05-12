@@ -88,6 +88,26 @@ export interface SearchResultEntry {
 export interface SearchResponse {
   agents: SearchResultEntry[];
   next_cursor: string | null;
+  /**
+   * "exact" when the registry matched on the literal capability string,
+   * "prefix" when it expanded via prefix-match (e.g. `image.generate` →
+   * `image.generate.photorealistic.png`). Surfaced from the registry to let
+   * clients distinguish exact-hit listings from broader namespace matches.
+   */
+  match?: "exact" | "prefix";
+  /**
+   * On EMPTY results, the registry includes up to 20 live capability IDs
+   * sorted alphabetically — the canonical taxonomy. Lets a calling LLM
+   * recover from a wrong-ID guess on the same turn instead of hallucinating
+   * a different name. OMITTED on non-empty results to keep payloads small.
+   */
+  available_capabilities?: string[];
+  /**
+   * On EMPTY results only, the total count of distinct live capabilities on
+   * the registry (so callers know how much of the taxonomy is shown in
+   * `available_capabilities` vs truncated by the 20-item cap).
+   */
+  total_distinct_capabilities?: number;
 }
 
 // -------------------------------------------------------------------------

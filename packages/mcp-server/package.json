@@ -1,7 +1,7 @@
 {
   "name": "@swarmwage/mcp",
-  "version": "0.3.2",
-  "description": "MCP server exposing the Swarmwage agent marketplace as tools for any MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, Cline, etc.)",
+  "version": "0.4.0",
+  "description": "MCP server exposing the Swarmwage agent hire protocol as tools for any MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, Cline, etc.)",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -18,7 +18,6 @@ import {
   type Reputation,
   type SearchRequest,
   type SearchResponse,
-  type SearchResultEntry,
   type Stars,
 } from "@swarmwage/agent-sdk";
 
@@ -34,7 +33,7 @@ const tools: Tool[] = [
   {
     name: "search_agents",
     description:
-      "Search the Swarmwage registry for agents that can perform a given capability. Returns a ranked list with prices, latency, and reputation. Use this when you need to find an agent for hire — e.g. when you encounter a task you cannot perform natively (image generation, audio transcription, specialized data lookup, niche translations, etc.).",
+      "Search the Swarmwage registry for agents that can perform a given capability. Returns a ranked list with prices, latency, and reputation. Use this when you need to find an agent for hire — e.g. when you encounter a task you cannot perform natively (image generation, audio transcription, specialized data lookup, niche translations, etc.).\n\nIMPORTANT: capability IDs follow a strict taxonomy (e.g. `code.execute.sandboxed`, NOT `code.execute.python.sandbox`). If your call returns zero agents, the response includes `available_capabilities` (the live taxonomy) and `total_distinct_capabilities`. Use one of those exact strings on retry — do not guess variants. When unsure, call `list_capabilities` first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -73,7 +72,7 @@ const tools: Tool[] = [
   {
     name: "hire_agent",
     description:
-      "Hire an agent to execute a capability. Returns the result synchronously. Payment is in USDC via x402 with escrow + automatic verification — you only pay if the output passes the capability's verification function. Use this after you've found a suitable agent via search_agents (or pass agent_id=null to auto-pick the best match). Requires a wallet.",
+      "Hire an agent to execute a capability. Returns the result synchronously. Payment is in USDC via x402 with escrow + automatic verification — you only pay if the output passes the capability's verification function. Use this after you've found a suitable agent via search_agents (or pass agent_id=null to auto-pick the best match). Requires a wallet.\n\nNOTE on first_call_free: if the seller's listing has `first_call_free: true`, the hire executes WITHOUT any USDC charge — even when `get_remaining_budget` returns '0.00'. The SDK skips the budget check entirely for free listings. So a $0.00 budget is NOT a blocker for trying free listings; only for paid follow-up calls.",
     inputSchema: {
       type: "object",
       properties: {
@@ -136,7 +135,7 @@ const tools: Tool[] = [
   {
     name: "get_remaining_budget",
     description:
-      "Return how much USDC remains in the operator-authorized budget for this session. Returns '0.00' if no budget is loaded or no wallet is configured.",
+      "Return how much USDC remains in the operator-authorized budget for this session. Returns '0.00' if no budget is loaded or no wallet is configured.\n\nIMPORTANT: a '0.00' return value does NOT block hires of listings with `first_call_free: true`. The SDK skips the budget check entirely for free listings, so try-it-free hires succeed even at zero budget. Only paid hires require positive remaining budget.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -210,6 +209,12 @@ const tools: Tool[] = [
         limit: { type: "number", description: "How many to return. Default 50, max 200." },
       },
     },
+  },
+  {
+    name: "list_capabilities",
+    description:
+      "Return all capability IDs currently live on the Swarmwage registry, plus the total distinct count. Use this BEFORE `search_agents` whenever you don't already know the exact capability name — the taxonomy is strict (e.g. `code.execute.sandboxed`, not `code.execute.python.sandbox`). Calling this first prevents wasted search round-trips on guessed IDs. Read-only, no wallet required.",
+    inputSchema: { type: "object", properties: {} },
   },
 ];
 
@@ -302,9 +307,14 @@ export async function runServer(): Promise<void> {
       })
     : undefined;
 
+  // Direct fetch so we can surface registry metadata (`available_capabilities`
+  // and `total_distinct_capabilities`) on empty results — the SDK's
+  // `client.search()` strips those fields. Calling LLMs use the hint to
+  // recover from a wrong capability guess on the same turn instead of
+  // hallucinating a different ID.
   async function directSearch(
     req: SearchRequest,
-  ): Promise<SearchResultEntry[]> {
+  ): Promise<SearchResponse> {
     const res = await fetch(`${REGISTRY_URL}/v1/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -315,8 +325,7 @@ export async function runServer(): Promise<void> {
         `registry search failed: ${res.status} ${res.statusText}`,
       );
     }
-    const data = (await res.json()) as SearchResponse;
-    return data.agents;
+    return (await res.json()) as SearchResponse;
   }
 
   async function directReputation(agentId: AgentId): Promise<Reputation> {
@@ -353,10 +362,35 @@ export async function runServer(): Promise<void> {
             min_avg_stars: args.min_avg_stars as number | undefined,
             limit: args.limit as number | undefined,
           };
-          const results = client
-            ? await client.search(searchReq)
-            : await directSearch(searchReq);
-          return ok({ agents: results });
+          // Always go via directSearch so we surface `available_capabilities`
+          // and `total_distinct_capabilities` when the result set is empty —
+          // the SDK client strips those fields.
+          const response = await directSearch(searchReq);
+          if (response.agents.length === 0) {
+            return ok({
+              agents: [],
+              match: response.match,
+              next_cursor: response.next_cursor,
+              available_capabilities: response.available_capabilities ?? [],
+              total_distinct_capabilities:
+                response.total_distinct_capabilities ?? 0,
+              hint: `No agent found for capability '${searchReq.capability}'. Pick one of the IDs in 'available_capabilities' (the live taxonomy) and retry — do not guess variants.`,
+            });
+          }
+          return ok({ agents: response.agents });
+        }
+
+        case "list_capabilities": {
+          // Reuse the search-empty fallback as the data source: a sentinel
+          // capability ID returns the live `available_capabilities` list.
+          const response = await directSearch({
+            capability: "__list_capabilities__",
+            limit: 1,
+          });
+          return ok({
+            capabilities: response.available_capabilities ?? [],
+            total: response.total_distinct_capabilities ?? 0,
+          });
         }
 
         case "check_reputation": {
