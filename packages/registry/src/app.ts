@@ -192,7 +192,7 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       method: "POST",
       path: "/v1/search",
       description:
-        "Search active listings by capability. Body: { capability, match?: 'exact'|'prefix', max_price_usdc?, max_latency_ms?, min_success_rate?, min_avg_stars?, limit? }",
+        "Search active listings by capability. Body: { capability, match?: 'exact'|'prefix', max_price_usdc?, max_latency_ms?, min_success_rate?, min_avg_stars?, limit? }. On empty result, response additionally carries `available_capabilities` (up to 20) and `total_distinct_capabilities` so callers can discover the live catalogue.",
     },
     {
       method: "GET",
@@ -293,6 +293,20 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       match === "prefix"
         ? await store.searchByCapabilityPrefix(searchReq)
         : await store.search(searchReq);
+    if (agents.length === 0) {
+      const [available_capabilities, total_distinct_capabilities] =
+        await Promise.all([
+          store.listActiveCapabilities(20),
+          store.countCapabilities(),
+        ]);
+      return c.json({
+        agents,
+        next_cursor: null,
+        match,
+        available_capabilities,
+        total_distinct_capabilities,
+      });
+    }
     return c.json({ agents, next_cursor: null, match });
   });
 

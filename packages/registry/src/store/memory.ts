@@ -128,6 +128,14 @@ export class MemoryStore implements RegistryStore {
     return set.size;
   }
 
+  async listActiveCapabilities(limit: number): Promise<string[]> {
+    const set = new Set<string>();
+    for (const listing of this.listings.values()) {
+      set.add(listing.capability);
+    }
+    return Array.from(set).sort().slice(0, limit);
+  }
+
   /**
    * Shared search core. Applies non-capability filters identically across
    * exact + prefix variants; the only thing that varies is how the

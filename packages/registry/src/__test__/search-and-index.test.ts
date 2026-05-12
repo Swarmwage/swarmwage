@@ -53,6 +53,8 @@ interface SearchResponse {
   }>;
   next_cursor: null;
   match?: string;
+  available_capabilities?: string[];
+  total_distinct_capabilities?: number;
 }
 
 async function search(
@@ -117,6 +119,36 @@ describe("POST /v1/search — exact vs prefix matching", () => {
     });
     assert.equal(status, 200);
     assert.equal(json.agents.length, 0);
+  });
+
+  it("empty result enriches response with available_capabilities + total_distinct_capabilities", async () => {
+    const { status, json } = await search(appHandle.app, {
+      capability: "nonexistent.capability.string",
+    });
+    assert.equal(status, 200);
+    assert.equal(json.agents.length, 0);
+    // The 4 listings seeded in `before` span 4 distinct capabilities.
+    assert.equal(json.total_distinct_capabilities, 4);
+    assert.ok(Array.isArray(json.available_capabilities));
+    assert.deepEqual(json.available_capabilities, [
+      "audio.transcribe.json-with-timestamps",
+      "audio.transcribe.srt",
+      "audio.transcribe.text",
+      "image.generate.png",
+    ]);
+  });
+
+  it("non-empty result omits available_capabilities (backwards compat)", async () => {
+    const { status, json } = await search(appHandle.app, {
+      capability: "audio.transcribe",
+      match: "prefix",
+    });
+    assert.equal(status, 200);
+    assert.ok(json.agents.length > 0);
+    // Callers that already work with the legacy shape must not see new keys
+    // when matches exist — the enrichment is strictly a hint for misses.
+    assert.equal(json.available_capabilities, undefined);
+    assert.equal(json.total_distinct_capabilities, undefined);
   });
 
   it("prefix match returns all listings whose capability starts with the query", async () => {

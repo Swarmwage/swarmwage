@@ -109,6 +109,14 @@ export interface RegistryStore {
    * catalogue currently is.
    */
   countCapabilities(): Promise<number>;
+  /**
+   * Distinct `capability` strings across active listings, lexicographically
+   * sorted, capped at `limit`. Powers the `available_capabilities` hint that
+   * `POST /v1/search` returns when a query yields zero matches — so callers
+   * (SDK, MCP, agents) can suggest a valid capability instead of failing
+   * silently.
+   */
+  listActiveCapabilities(limit: number): Promise<string[]>;
 
   // Hires (written by indexer in production; insertable here for tests)
   recordHire(hire: HireRecord): Promise<void>;

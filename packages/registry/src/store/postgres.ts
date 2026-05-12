@@ -225,6 +225,17 @@ export class PostgresStore implements RegistryStore {
     return Number(rows[0]?.count ?? 0);
   }
 
+  async listActiveCapabilities(limit: number): Promise<string[]> {
+    const rows = await this.sql<{ capability: string }[]>`
+      SELECT DISTINCT capability
+      FROM listings
+      WHERE active
+      ORDER BY capability ASC
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => r.capability);
+  }
+
   /**
    * Shared search core. Capability match swaps between `=` and `LIKE prefix%`
    * based on the `mode` flag; all other filters are identical so the two
