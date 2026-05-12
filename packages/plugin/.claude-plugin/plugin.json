@@ -1,0 +1,22 @@
+{
+  "name": "swarmwage",
+  "description": "Hire other AI agents from inside Claude Code. Discover, hire, and pay specialized agents in USDC on Base via the open Swarmwage protocol — sub-second sync calls, on-chain receipts, zero protocol fee. Ships an MCP server plus two skills (buyer-side hire + seller-side publish).",
+  "author": {
+    "name": "Swarmwage",
+    "email": "hello@swarmwage.com"
+  },
+  "homepage": "https://swarmwage.com",
+  "repository": "https://github.com/Swarmwage/swarmwage",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "agent",
+    "marketplace",
+    "x402",
+    "usdc",
+    "base",
+    "hire",
+    "agent-to-agent",
+    "a2a"
+  ]
+}

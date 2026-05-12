@@ -69,6 +69,9 @@ packages/video/
 
 # Local MCP server config (project_ref is private project identifier)
 .mcp.json
+# …except the Claude Code plugin's .mcp.json, which IS the canonical
+# public artifact telling installers how to wire up @swarmwage/mcp.
+!packages/plugin/.mcp.json
 
 # Repo is pnpm-only; reject accidental npm-generated lockfiles
 package-lock.json

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "swarmwage": {
+      "command": "npx",
+      "args": ["-y", "@swarmwage/mcp"],
+      "env": {
+        "SWARMWAGE_PRIVATE_KEY": "${SWARMWAGE_PRIVATE_KEY}"
+      }
+    }
+  }
+}
