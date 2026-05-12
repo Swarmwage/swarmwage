@@ -273,12 +273,14 @@ function insufficientFundsResult(err: InsufficientFundsError) {
 // -------------------------------------------------------------------------
 
 export async function runServer(): Promise<void> {
-  const envKey = process.env.SWARMWAGE_PRIVATE_KEY as Hex | undefined;
-  const fileKey = envKey ? null : await loadWallet();
-  const PRIVATE_KEY: Hex | undefined = envKey ?? fileKey ?? undefined;
-
+  // Pure-config inputs we can read sync. Anything that does I/O (file read,
+  // network) is deferred so the transport handshake is not blocked.
   const REGISTRY_URL =
     process.env.SWARMWAGE_REGISTRY_URL ?? "https://api.swarmwage.com";
+  const NETWORK: "base" | "base-sepolia" =
+    (process.env.SWARMWAGE_NETWORK as "base" | "base-sepolia" | undefined) ??
+    "base";
+  const envKey = process.env.SWARMWAGE_PRIVATE_KEY as Hex | undefined;
 
   let budget: BudgetToken | undefined;
   if (process.env.SWARMWAGE_BUDGET_TOKEN) {
@@ -291,21 +293,6 @@ export async function runServer(): Promise<void> {
       process.exit(1);
     }
   }
-
-  // Default to Base mainnet (matches production listings on api.swarmwage.com).
-  // Override with SWARMWAGE_NETWORK=base-sepolia for testnet.
-  const NETWORK: "base" | "base-sepolia" =
-    (process.env.SWARMWAGE_NETWORK as "base" | "base-sepolia" | undefined) ??
-    "base";
-
-  const client: AgentClient | undefined = PRIVATE_KEY
-    ? new AgentClient({
-        privateKey: PRIVATE_KEY,
-        registryUrl: REGISTRY_URL,
-        budget,
-        network: NETWORK,
-      })
-    : undefined;
 
   // Direct fetch so we can surface registry metadata (`available_capabilities`
   // and `total_distinct_capabilities`) on empty results — the SDK's
@@ -340,9 +327,42 @@ export async function runServer(): Promise<void> {
     return (await res.json()) as Reputation;
   }
 
+  // Lazy wallet + client load — kicked off in the background AFTER the
+  // transport handshake so `tools/list` is never blocked by file I/O or viem
+  // wallet client init. Calling LLMs see the tool catalog immediately;
+  // wallet-only tools (hire_agent, publish_listing, etc.) await this promise
+  // at call time and the first call waits ~50-200ms once. Read-only tools
+  // (search_agents, check_reputation, list_capabilities, get_agent_id with
+  // null fallback, get_remaining_budget with '0.00' fallback) never wait.
+  //
+  // This eliminates the race condition where slow MCP-host harnesses close
+  // their deferred-tool index before our pre-connect setup completes.
+  let clientPromise: Promise<AgentClient | undefined> | null = null;
+  function ensureClient(): Promise<AgentClient | undefined> {
+    if (!clientPromise) {
+      clientPromise = (async () => {
+        const fileKey = envKey ? null : await loadWallet();
+        const PRIVATE_KEY: Hex | undefined = envKey ?? fileKey ?? undefined;
+        if (!PRIVATE_KEY) return undefined;
+        return new AgentClient({
+          privateKey: PRIVATE_KEY,
+          registryUrl: REGISTRY_URL,
+          budget,
+          network: NETWORK,
+        });
+      })();
+    }
+    return clientPromise;
+  }
+
   const server = new Server(
     { name: "swarmwage", version: VERSION },
-    { capabilities: { tools: {} } },
+    // `tools.listChanged: true` signals that the tool list is dynamic and
+    // the host should re-read on `notifications/tools/list_changed`. We
+    // never actually mutate the list at runtime today, but advertising the
+    // capability makes harnesses with stricter cache-invalidation behavior
+    // re-query on retry instead of pinning a stale empty list.
+    { capabilities: { tools: { listChanged: true } } },
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -350,6 +370,12 @@ export async function runServer(): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs ?? {}) as Record<string, unknown>;
+
+    // Resolve the cached client promise. First call across the process pays
+    // ~50-200ms once for loadWallet + AgentClient ctor; every subsequent call
+    // is sync. Read-only tools (search_agents, list_capabilities) work even
+    // when this returns undefined.
+    const client = await ensureClient();
 
     try {
       switch (name) {
@@ -481,21 +507,32 @@ export async function runServer(): Promise<void> {
     }
   });
 
+  // Connect the transport IMMEDIATELY — before any file I/O or wallet init.
+  // `tools/list` is now answerable from the moment the host sends it. This
+  // fixes the race where slow MCP hosts close their deferred-tool index
+  // before the pre-connect setup finished (observed in Claude Code on
+  // cold-start of a session that had `npx -y @swarmwage/mcp` registered).
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  process.stderr.write(`swarmwage-mcp v${VERSION} listening on stdio\n`);
 
-  if (client) {
-    const source = envKey ? "env" : "config";
-    process.stderr.write(
-      `swarmwage-mcp v${VERSION} ready (agent_id=${client.agentId}, wallet=${source})\n`,
-    );
-  } else {
-    process.stderr.write(
-      `swarmwage-mcp v${VERSION} ready (lookup-only — no wallet)\n` +
-        `  Enabled: search_agents, check_reputation, get_remaining_budget, get_agent_id\n` +
-        `  Setup wallet: npx @swarmwage/mcp\n`,
-    );
-  }
+  // Now kick off wallet preload in the background. Tool calls that need a
+  // wallet will await this same promise; calls that don't (search, list,
+  // reputation) never touch it.
+  void ensureClient().then((client) => {
+    if (client) {
+      const source = envKey ? "env" : "config";
+      process.stderr.write(
+        `swarmwage-mcp v${VERSION} wallet ready (agent_id=${client.agentId}, source=${source})\n`,
+      );
+    } else {
+      process.stderr.write(
+        `swarmwage-mcp v${VERSION} lookup-only (no wallet)\n` +
+          `  Enabled: search_agents, list_capabilities, check_reputation, get_remaining_budget, get_agent_id\n` +
+          `  Setup wallet: npx @swarmwage/mcp\n`,
+      );
+    }
+  });
 
   // Fire-and-forget update probe. The MCP loop above is already serving
   // requests; this writes one stderr line if an update is available, then
