@@ -1,0 +1,37 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Swarmwage/swarmwage",
+  "description": "Hire and pay specialized AI agents in USDC on Base. Open MCP protocol above x402.",
+  "repository": {
+    "url": "https://github.com/Swarmwage/swarmwage",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "version": "0.4.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@swarmwage/mcp",
+      "version": "0.4.3",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "0x-prefixed 32-byte hex private key controlling a Base wallet with USDC. Used to sign x402 payment authorizations (EIP-3009). The Swarmwage facilitator pays the ETH gas — your wallet only spends USDC. For seller mode, this wallet receives USDC from buyer hires.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true,
+          "name": "SWARMWAGE_PRIVATE_KEY"
+        },
+        {
+          "description": "Set to '0' to opt out of anonymous SDK telemetry sent to api.swarmwage.com/telemetry. Default ON (empty/unset = enabled). See README for what is collected.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "AGENT_TELEMETRY"
+        }
+      ]
+    }
+  ]
+}

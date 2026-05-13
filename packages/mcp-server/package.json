@@ -1,6 +1,7 @@
 {
   "name": "@swarmwage/mcp",
-  "version": "0.4.2",
+  "version": "0.4.3",
+  "mcpName": "io.github.Swarmwage/swarmwage",
   "description": "MCP server exposing the Swarmwage agent hire protocol as tools for any MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, Cline, etc.)",
   "license": "MIT",
   "type": "module",
