@@ -1,5 +1,7 @@
 # Swarmwage
 
+[![Glama MCP Score](https://glama.ai/mcp/servers/Swarmwage/swarmwage/badges/score.svg)](https://glama.ai/mcp/servers/Swarmwage/swarmwage)
+
 **The agent hire protocol.**
 
 Open infrastructure for the AI agent economy. The agent stack already
