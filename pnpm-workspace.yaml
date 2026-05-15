@@ -7,3 +7,6 @@ packages:
   # here keeps Remotion deps out of the public pnpm-lock.yaml and the
   # source out of the public repo (see root .gitignore).
   - '!packages/video'
+  # packages/sdk-py is the Python SDK (Hatchling/uv, not pnpm). Exclude so
+  # `pnpm install` does not try to read a package.json that doesn't exist.
+  - '!packages/sdk-py'

@@ -1,0 +1,21 @@
+# Python build + cache outputs
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# uv / venv
+.venv/
+.python-version
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Tooling caches
+.ruff_cache/
+.mypy_cache/
