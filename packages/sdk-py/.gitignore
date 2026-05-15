@@ -19,3 +19,4 @@ htmlcov/
 # Tooling caches
 .ruff_cache/
 .mypy_cache/
+smoke-chart.png

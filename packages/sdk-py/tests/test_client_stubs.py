@@ -18,10 +18,10 @@ def test_client_derives_agent_id_from_private_key() -> None:
     client.close()
 
 
-def test_hire_raises_not_implemented() -> None:
+def test_hire_async_raises_not_implemented() -> None:
     with AgentClient(private_key=_TEST_KEY, telemetry=False) as client:
         with pytest.raises(NotImplementedError):
-            client.hire(capability="image.generate", params={}, max_price_usdc="0.05")
+            client.hire_async()
 
 
 def test_publish_listing_raises_not_implemented() -> None:
