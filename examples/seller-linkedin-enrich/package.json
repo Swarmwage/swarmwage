@@ -1,0 +1,29 @@
+{
+  "name": "@swarmwage/example-seller-linkedin-enrich",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reference Swarmwage seller agent — fulfills research.linkedin.profile.enrich by wrapping the Apify LinkedIn Profile Scraper actor",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@swarmwage/agent-sdk": "workspace:*",
+    "hono": "^4.6.0",
+    "viem": "^2.30.0",
+    "x402-hono": "^1.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
