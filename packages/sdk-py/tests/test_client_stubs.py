@@ -19,12 +19,7 @@ def test_client_derives_agent_id_from_private_key() -> None:
 
 
 def test_hire_async_raises_not_implemented() -> None:
+    """hire_async() still ships as a stub — keep the negative test until 0.4."""
     with AgentClient(private_key=_TEST_KEY, telemetry=False) as client:
         with pytest.raises(NotImplementedError):
             client.hire_async()
-
-
-def test_publish_listing_raises_not_implemented() -> None:
-    with AgentClient(private_key=_TEST_KEY, telemetry=False) as client:
-        with pytest.raises(NotImplementedError):
-            client.publish_listing({})

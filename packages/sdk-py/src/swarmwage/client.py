@@ -17,12 +17,15 @@ from ._payment import (
     PaidResponse,
     resolve_facilitator_url,
 )
+from ._signing import sign_typed_payload
 from ._transport import DEFAULT_REGISTRY_URL, Transport
 from .errors import (
     HireRefusedError,
     InvalidProtocolVersionError,
     VerificationFailedError,
 )
+from .receipts import ReceiptPayload, SubmitReceiptResult, submit_receipt
+from .endpoint_verify import sign_endpoint_verify
 from .telemetry import Telemetry
 from .types import (
     PROTOCOL_VERSION,
@@ -336,15 +339,133 @@ class AgentClient:
         self._telemetry.send({"kind": "rate", "stars": stars})
 
     # ------------------------------------------------------------------
-    # Listings (sellers) — publish requires off-chain EIP-712 listing
-    # signature, deferred until a later alpha.
+    # Listings (sellers)
     # ------------------------------------------------------------------
 
-    def publish_listing(self, _listing: Any) -> None:
-        raise NotImplementedError(
-            "publish_listing() requires EIP-712 listing signature scaffolding "
-            "and ships in a later alpha. The TS SDK is the seller-side path "
-            "today."
+    def publish_listing(
+        self,
+        *,
+        capability: str,
+        price_usdc: str,
+        endpoint: str,
+        max_latency_ms: int,
+        first_call_free: bool = False,
+        currency: str = "USDC",
+        chain: str = "base",
+    ) -> Listing:
+        """Sign and POST a listing to the canonical registry.
+
+        Fills in `agent_id` from this client's wallet, signs the
+        canonical payload, and submits to `POST /v1/listings`. Returns
+        the signed listing (including the `signature` field) on success.
+        """
+        partial: dict[str, Any] = {
+            "agent_id": self.agent_id,
+            "capability": capability,
+            "price_usdc": price_usdc,
+            "currency": currency,
+            "chain": chain,
+            "max_latency_ms": max_latency_ms,
+            "first_call_free": first_call_free,
+            "endpoint": endpoint,
+        }
+        signature = sign_typed_payload(self._account, partial)
+        signed_body = {**partial, "signature": signature}
+        self._transport.request_json("POST", "/v1/listings", json=signed_body)
+        self._telemetry.send(
+            {
+                "kind": "publish_listing",
+                "capability": capability,
+                "price_usdc": price_usdc,
+            }
+        )
+        return Listing.model_validate(signed_body)
+
+    # ------------------------------------------------------------------
+    # Receipts (sellers) — Layer 3 of the 4-layer data capture
+    # ------------------------------------------------------------------
+
+    def submit_receipt(
+        self,
+        *,
+        hire_id: str,
+        buyer: str,
+        capability: str,
+        amount_usdc_atomic: str,
+        network: str,
+        tx_hash: str,
+        completed_at: str,
+        verification: dict[str, Any],
+        capability_version: str | None = None,
+        enabled: bool | None = None,
+    ) -> SubmitReceiptResult:
+        """Sign and submit a receipt for a fulfilled hire (seller-side).
+
+        Fire-and-forget: never raises. Errors come back inside the
+        :class:`SubmitReceiptResult`. Defaults to ON; respects the
+        ``SWARMWAGE_RECEIPTS=0`` opt-out env var.
+        """
+        payload = ReceiptPayload(
+            protocol_version=PROTOCOL_VERSION,
+            hire_id=hire_id,
+            agent_id=self.agent_id,
+            buyer=buyer,
+            capability=capability,
+            capability_version=capability_version,
+            amount_usdc_atomic=amount_usdc_atomic,
+            network=network,
+            tx_hash=tx_hash,
+            completed_at=completed_at,
+            verification=verification,
+        )
+        # Sign with the LocalAccount; submit_receipt accepts a string key
+        # so we extract a 0x-prefixed hex for it (handles HexBytes shape).
+        key_bytes = self._account.key
+        key_hex = key_bytes.hex() if hasattr(key_bytes, "hex") else str(key_bytes)
+        if not key_hex.startswith("0x"):
+            key_hex = "0x" + key_hex
+        result = submit_receipt(
+            seller_private_key=key_hex,
+            payload=payload,
+            registry_url=self.registry_url,
+            enabled=enabled,
+            http_client=self._transport._client,
+        )
+        self._telemetry.send(
+            {
+                "kind": "submit_receipt",
+                "capability": capability,
+                "submitted": result.submitted,
+                "status": result.status,
+                "ok": result.error is None,
+            }
+        )
+        return result
+
+    # ------------------------------------------------------------------
+    # Endpoint ownership proof (sellers) — Wave-2a anti-squat
+    # ------------------------------------------------------------------
+
+    def sign_endpoint_verify(self, *, nonce: str) -> dict[str, Any]:
+        """Build the well-known endpoint-verify response body.
+
+        Use from your seller HTTP handler:
+
+            @app.get(ENDPOINT_VERIFY_PATH)
+            def verify(nonce: str = ...):
+                return client.sign_endpoint_verify(nonce=nonce)
+
+        The registry challenges sellers at this path before believing
+        their listing's `endpoint` URL is one they own.
+        """
+        key_bytes = self._account.key
+        key_hex = key_bytes.hex() if hasattr(key_bytes, "hex") else str(key_bytes)
+        if not key_hex.startswith("0x"):
+            key_hex = "0x" + key_hex
+        return sign_endpoint_verify(
+            agent_id=self.agent_id,
+            nonce=nonce,
+            seller_private_key=key_hex,
         )
 
 
