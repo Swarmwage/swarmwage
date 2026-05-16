@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from typing import Any
@@ -68,7 +69,14 @@ class AgentClient:
         self.agent_id: str = self._account.address.lower()
         self.registry_url = registry_url.rstrip("/")
         self.network = network
-        self.facilitator_url = resolve_facilitator_url(facilitator_url=facilitator_url)
+        # Pass the process environment so `SWARMWAGE_FACILITATOR=0` (and
+        # `false|off|no`) actually opts the buyer out of the canonical
+        # facilitator. Without `env=`, the helper defaulted to an empty
+        # dict and silently ignored the env var.
+        self.facilitator_url = resolve_facilitator_url(
+            facilitator_url=facilitator_url,
+            env=dict(os.environ),
+        )
         self._budget = budget
         self._transport = Transport(self.registry_url)
         self._telemetry = Telemetry(agent_id=self.agent_id, enabled=telemetry)

@@ -14,6 +14,7 @@ import httpx
 from eth_account.signers.local import LocalAccount
 
 from . import _x402
+from ._url_security import validate_seller_endpoint
 from .errors import (
     InsufficientFundsError,
     PaymentFailedError,
@@ -76,6 +77,7 @@ def paid_request_json(
     facilitator_url: str | None = SWARMWAGE_FACILITATOR_URL,
     max_value_atomic: int | None = None,
     extra_headers: dict[str, str] | None = None,
+    allow_internal_endpoint: bool = False,
 ) -> PaidResponse:
     """Run a single x402 paid request cycle.
 
@@ -93,6 +95,12 @@ def paid_request_json(
     ``X-Swarmwage-Facilitator``; sellers that don't recognize the header fall
     back to their own facilitator (no impact on settlement correctness).
     """
+    # SSRF guard: a seller's published `endpoint` is attacker-controlled
+    # text. Refuse to send any traffic to schemes/hosts that could leak
+    # the buyer's body (wallet, params, budget hint) to internal targets
+    # like 169.254.169.254 (cloud metadata) or 127.0.0.1.
+    validate_seller_endpoint(url, allow_internal=allow_internal_endpoint)
+
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",

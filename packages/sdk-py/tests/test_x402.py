@@ -108,13 +108,6 @@ def test_select_payment_requirements_prefers_usdc_on_target_network() -> None:
     assert sel["asset"] == _x402.USDC_ASSET_BY_CHAIN_ID[8453]
 
 
-def test_select_payment_requirements_falls_back_to_first_when_none_match() -> None:
-    only_sepolia = [_make_requirement(network="base-sepolia")]
-    sel = _x402.select_payment_requirements(only_sepolia, network="base")
-    # No (scheme=exact, network=base) match → falls back to first listed.
-    assert sel["network"] == "base-sepolia"
-
-
 def test_select_payment_requirements_empty_raises() -> None:
     with pytest.raises(ValueError):
         _x402.select_payment_requirements([], network="base")
@@ -158,3 +151,30 @@ def test_create_nonce_is_32_bytes_hex() -> None:
     n2 = _x402.create_nonce()
     assert n1 != n2
     assert n1.startswith("0x") and len(n1) == 66
+
+
+# ----------------------------------------------------------------------
+# Audit P1: cross-network fallback must raise instead of silently picking
+# a requirement on a different chain (would burn the EIP-3009 auth on the
+# wrong network and hide a real misconfiguration).
+# ----------------------------------------------------------------------
+
+def test_select_payment_requirements_rejects_cross_network_fallback() -> None:
+    accepts = [_make_requirement(network='base-sepolia')]
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match='no requirement for'):
+        _x402.select_payment_requirements(accepts, network='base')
+
+
+def test_select_payment_requirements_empty_accepts_raises() -> None:
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="empty 'accepts'"):
+        _x402.select_payment_requirements([], network='base')
+
+
+def test_select_payment_requirements_unknown_scheme_raises() -> None:
+    accepts = [{**_make_requirement(), 'scheme': 'weird-future-scheme'}]
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match='no requirement for'):
+        _x402.select_payment_requirements(accepts, network='base')
+

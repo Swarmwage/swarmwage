@@ -189,6 +189,51 @@ def test_submit_receipt_never_raises_on_network_error() -> None:
     assert "network error" in result.error
 
 
+def test_submit_receipt_rejects_dict_payload_missing_required_fields() -> None:
+    """Audit P1: a dict payload missing required keys must NOT be signed
+    and submitted as garbage. Caller bug should surface as a clear error."""
+    sent: list = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        sent.append(req)
+        return httpx.Response(200, json={"receipt_id": "should_not_happen"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        result = submit_receipt(
+            seller_private_key=SELLER_KEY,
+            payload={"agent_id": SELLER_ID},  # everything else missing
+            http_client=client,
+        )
+    finally:
+        client.close()
+
+    assert sent == []  # no network call
+    assert result.submitted is True
+    assert result.error is not None
+    assert "missing required field" in result.error
+    # Helpful surface: lists what was missing.
+    assert "hire_id" in result.error
+
+
+def test_submit_receipt_bad_private_key_narrow_exception() -> None:
+    """Audit P1: bad key surfaces clearly; unrelated programming bugs
+    (e.g. AttributeError on a wrong shape) should bubble up — not be
+    swallowed under generic 'sign failed'."""
+    logs: list[str] = []
+    result = submit_receipt(
+        seller_private_key="not-a-hex-key",  # ValueError from eth_account
+        payload=_make_payload(),
+        logger=logs.append,
+    )
+    assert result.submitted is True
+    assert result.error is not None
+    assert "bad private key" in result.error
+    # Exception type name is included (binascii.Error / ValueError / TypeError)
+    # so the seller can distinguish "bad key" from "registry rejected".
+    assert ":" in result.error  # "<TypeName>: <msg>" surface
+
+
 def test_agent_client_submit_receipt_uses_own_wallet() -> None:
     """AgentClient.submit_receipt fills in agent_id from the wallet."""
     captured: dict = {}

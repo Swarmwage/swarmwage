@@ -80,11 +80,16 @@ def select_payment_requirements(
     network: str,
     scheme: str = SCHEME_EXACT,
 ) -> dict[str, Any]:
-    """Mirror of ``x402/client.selectPaymentRequirements``.
+    """Pick the payment requirement matching ``(scheme, network)``, preferring
+    a USDC asset on that network.
 
-    Filters down to (scheme, network), prefers USDC requirements, then falls
-    back to the first acceptable requirement, then the first listed. Raises
-    :class:`ValueError` only if the accepts list is empty.
+    Diverges intentionally from the upstream x402 helper, which silently
+    falls back to the first listed requirement when nothing matches. The
+    SDK refuses to sign for a different chain than the buyer configured —
+    that would (a) burn an EIP-3009 authorization on the wrong network
+    (recoverable only by waiting out validBefore), and (b) hide a real
+    misconfiguration (buyer asked for `base`, seller only serves
+    `base-sepolia`) behind a confusing partial success. Raise instead.
     """
     accepts_list = list(accepts)
     if not accepts_list:
@@ -95,6 +100,13 @@ def select_payment_requirements(
         if (not scheme or r.get("scheme") == scheme)
         and (not network or r.get("network") == network)
     ]
+    if not broadly:
+        offered = sorted({(r.get("scheme"), r.get("network")) for r in accepts_list})
+        raise ValueError(
+            f"x402: seller offers no requirement for (scheme={scheme!r}, "
+            f"network={network!r}). Offered: {offered}. Refusing to sign on a "
+            "different network than the buyer configured."
+        )
 
     target_asset = USDC_ASSET_BY_CHAIN_ID.get(network_to_chain_id(network))
     usdc_only = [
@@ -102,11 +114,7 @@ def select_payment_requirements(
         if target_asset is not None
         and (r.get("asset") or "").lower() == target_asset.lower()
     ]
-    if usdc_only:
-        return usdc_only[0]
-    if broadly:
-        return broadly[0]
-    return accepts_list[0]
+    return usdc_only[0] if usdc_only else broadly[0]
 
 
 # -------------------------------------------------------------------------

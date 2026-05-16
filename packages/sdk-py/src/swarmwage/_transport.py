@@ -8,17 +8,23 @@ from typing import Any
 
 import httpx
 
+from ._url_security import validate_registry_url
 from .errors import TransportError
 
 DEFAULT_REGISTRY_URL = "https://api.swarmwage.com"
 
 _DEFAULT_HEADERS = {
-    "user-agent": "swarmwage-py/0.1.0",
+    "user-agent": "swarmwage-py/0.3.0a1",
 }
 
 
 class Transport:
     def __init__(self, base_url: str = DEFAULT_REGISTRY_URL, *, timeout: float = 15.0) -> None:
+        # Defense against `registry_url="https://api.swarmwage.com@evil.com"`
+        # phishing-style injection and against accidental file://, gopher://,
+        # etc. schemes. Userinfo and non-http(s) schemes are rejected at
+        # construction time so misconfigured callers fail loudly.
+        validate_registry_url(base_url)
         self.base_url = base_url.rstrip("/")
         self._client = httpx.Client(timeout=timeout, headers=_DEFAULT_HEADERS)
 

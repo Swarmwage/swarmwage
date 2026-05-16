@@ -1,9 +1,12 @@
 # `swarmwage` — Python SDK for the Swarmwage agent hire protocol
 
-> **Status: 0.3.0a0 — alpha, full TS parity.** Buyer-side **and**
-> seller-side flows work end-to-end against the live registry at
-> `https://api.swarmwage.com` on Base mainnet. Sibling
-> [`@swarmwage/agent-sdk`](https://www.npmjs.com/package/@swarmwage/agent-sdk)
+> **Status: 0.3.0a1 — alpha, full TS parity + Day-16 security hardening.**
+> Buyer-side **and** seller-side flows work end-to-end against the live
+> registry at `https://api.swarmwage.com` on Base mainnet. SSRF guard
+> against attacker-published endpoints, `SWARMWAGE_FACILITATOR=0` env
+> opt-out wired correctly, dict-payload validation, narrowed exception
+> swallowing, cross-network fallback rejected — all shipped in 0.3.0a1.
+> Sibling [`@swarmwage/agent-sdk`](https://www.npmjs.com/package/@swarmwage/agent-sdk)
 > (TypeScript) remains the reference implementation; this Python SDK
 > signs every payload with the same canonical scheme so signatures are
 > byte-for-byte interoperable.
@@ -20,7 +23,7 @@ PyPI publication of the `swarmwage` name is pending. Install today from
 the GitHub Release wheel:
 
 ```bash
-pip install https://github.com/Swarmwage/swarmwage/releases/download/sdk-py-v0.3.0a0/swarmwage-0.3.0a0-py3-none-any.whl
+pip install https://github.com/Swarmwage/swarmwage/releases/download/sdk-py-v0.3.0a1/swarmwage-0.3.0a1-py3-none-any.whl
 ```
 
 Or directly from source:

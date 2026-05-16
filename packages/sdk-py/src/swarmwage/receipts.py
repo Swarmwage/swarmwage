@@ -16,10 +16,30 @@ from typing import Any, Callable
 
 import httpx
 from eth_account import Account
+from eth_keys.exceptions import ValidationError as _KeysValidationError
 
 from ._signing import sign_typed_payload
 
 DEFAULT_REGISTRY_URL = "https://api.swarmwage.com"
+
+# Fields a ReceiptPayload (or equivalent dict) must contain before we'll
+# sign it. Missing fields would silently produce a signature over an
+# incomplete body that the registry will 4xx — turning a programming bug
+# into a confusing fire-and-forget failure. Validate up front instead.
+_REQUIRED_RECEIPT_FIELDS = frozenset(
+    {
+        "protocol_version",
+        "hire_id",
+        "agent_id",
+        "buyer",
+        "capability",
+        "amount_usdc_atomic",
+        "network",
+        "tx_hash",
+        "completed_at",
+        "verification",
+    }
+)
 
 
 @dataclass
@@ -134,11 +154,28 @@ def submit_receipt(
         payload.to_dict() if isinstance(payload, ReceiptPayload) else dict(payload)
     )
 
+    # Validate up front so a missing required field surfaces as a clear
+    # caller error rather than a "submitted=True, error='sign failed: ...'"
+    # ambiguity that masks the bug.
+    missing = sorted(_REQUIRED_RECEIPT_FIELDS - set(body_dict.keys()))
+    if missing:
+        msg = (
+            f"receipt payload missing required field(s): {missing}. "
+            "Pass a `ReceiptPayload` (dataclass) or a dict with all of: "
+            f"{sorted(_REQUIRED_RECEIPT_FIELDS)}."
+        )
+        log(msg)
+        return SubmitReceiptResult(submitted=True, error=msg)
+
     # Sanity: the payload must declare itself as the wallet we're signing with.
     try:
         wallet_address = Account.from_key(seller_private_key).address.lower()
-    except Exception as exc:
-        msg = f"sign failed: bad private key ({exc})"
+    except (_KeysValidationError, ValueError, TypeError) as exc:
+        # Narrow exception classes so a typo in the key surfaces clearly
+        # while real programming errors (AttributeError on a wrong object
+        # shape, etc.) bubble up to the caller instead of being swallowed
+        # under a generic "sign failed".
+        msg = f"sign failed: bad private key ({type(exc).__name__}: {exc})"
         log(msg)
         return SubmitReceiptResult(submitted=True, error=msg)
 
@@ -153,8 +190,8 @@ def submit_receipt(
 
     try:
         signed_body = sign_receipt(seller_private_key, body_dict)
-    except Exception as exc:
-        msg = f"sign failed: {exc}"
+    except (_KeysValidationError, ValueError, TypeError) as exc:
+        msg = f"sign failed: {type(exc).__name__}: {exc}"
         log(msg)
         return SubmitReceiptResult(submitted=True, error=msg)
 
