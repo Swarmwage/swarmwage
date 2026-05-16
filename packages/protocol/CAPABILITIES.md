@@ -165,6 +165,14 @@ Server-side rendered charts from a structured dataset. The seller receives data 
 
 `{taxonomy}` for general image classification: `imagenet-1k`, `coco-categories`, `safe-content`.
 
+### Research
+
+| Capability | Input | Output | Verification |
+|---|---|---|---|
+| `research.linkedin.profile.enrich` | `{ profile_url: string (https://(www.)?linkedin.com/in/<slug>) }` | `{ profile: { url, name, headline, location, current_position, company, summary, skills, source } }` | `profile` is object; `profile.url` and `profile.name` are non-empty strings; `profile.source` ∈ `{"apify", "phantombuster", "proxycurl", ...}` (provenance pin) |
+
+The `research.*` namespace covers B2B research capabilities that typically wrap upstream gated APIs (Apify, Hunter, Tavily, Clearbit, etc.). Sellers are expected to declare `source` on every output so buyers can audit provenance.
+
 ---
 
 ## Custom capabilities
