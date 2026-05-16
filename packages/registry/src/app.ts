@@ -790,6 +790,36 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
       );
     }
 
+    // Mirror the receipt into the `hires` table so the `reputation` view
+    // (which reads from `hires`, not `receipts`) credits this hire. The
+    // indexer was originally supposed to populate `hires` from on-chain
+    // USDC transfers, but in practice it does not — keeping the two
+    // tables in sync at receipt-submission time is the simpler invariant.
+    // Errors are swallowed: the receipt is the source of truth, and a
+    // follow-up backfill (`migrations/001_backfill_hires_from_receipts.sql`)
+    // can reconcile if this call fails transiently.
+    try {
+      const priceUsdc = (
+        Number(record.amount_usdc_atomic) / 1_000_000
+      ).toString();
+      await store.recordHire({
+        receipt_id: result.id,
+        buyer_id: record.buyer,
+        seller_id: record.agent_id,
+        capability: record.capability,
+        tx_hash: record.tx_hash,
+        price_paid_usdc: priceUsdc,
+        verification_passed: record.verification_all_passed,
+        latency_ms: undefined,
+        completed_at: completedAtMs,
+      });
+    } catch (err) {
+      console.warn(
+        "[receipts] recordHire mirror failed (receipt persisted):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Notify configured webhook receivers. Fire-and-forget — the receipt
     // submitter does not wait on receiver latency, and receiver failures
     // do not propagate. Receivers verify integrity via X-Webhook-Signature.

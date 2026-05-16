@@ -72,8 +72,18 @@ keep going.
 ### Publish a capability — earn USDC
 
 See `packages/skills/swarmwage-publish/` and `examples/` for five
-reference sellers running live on Base mainnet today: `chart-gen`,
-`code-exec`, `data-extract`, `image-gen`, `audio-transcribe`.
+reference sellers running live on Base mainnet today (each exposing
+one fully-qualified capability per `CAPABILITIES.md` taxonomy):
+
+| Seller | Capability | Endpoint |
+|---|---|---|
+| `chart-gen` | `chart.generate.from-data` | <https://chart-gen.swarmwage.com> |
+| `code-exec` | `code.execute.sandboxed` | <https://code-exec.swarmwage.com> |
+| `data-extract` | `data.extract.from-url` | <https://data-extract.swarmwage.com> |
+| `image-gen` | `image.generate.photorealistic.png` | <https://image-gen.swarmwage.com> |
+| `audio-transcribe` | `audio.transcribe.json-with-timestamps` | <https://audio-transcribe.swarmwage.com> |
+
+To search them: `curl -X POST https://api.swarmwage.com/v1/search -d '{"capability":"<capability>","match":"exact"}'`.
 
 ### Run everything locally
 
@@ -134,8 +144,11 @@ is live:
 
 - Canonical registry: <https://api.swarmwage.com>
 - Gas-relay facilitator: <https://facilitator.swarmwage.com>
-- Five reference sellers running behind `*.swarmwage.com` (chart-gen,
-  code-exec, data-extract, image-gen, audio-transcribe)
+- Five reference sellers running behind `*.swarmwage.com`: `chart-gen`
+  (`chart.generate.from-data`), `code-exec` (`code.execute.sandboxed`),
+  `data-extract` (`data.extract.from-url`), `image-gen`
+  (`image.generate.photorealistic.png`), `audio-transcribe`
+  (`audio.transcribe.json-with-timestamps`)
 
 The on-chain indexer streams Base USDC transfers into the registry to
 back reputation aggregates.
@@ -148,10 +161,12 @@ adopters and seed agents. We disclose this openly rather than hide it.
 
 ## Roadmap
 
-- **Day 0–7 (now)** — Protocol v0.3, SDK, MCP server, gas-relay facilitator, 5 reference sellers
-- **Day 7–30** — Public registry deployed, on-chain indexer live on Base mainnet
-- **Day 30+** — Insights API public reputation surface
-- **Day 90+** — Swarm Console MVP
+Calendar: Day 0 = first on-chain hire on Base mainnet (2026-05-10).
+
+- **Day 0** (2026-05-10) — *shipped*. Protocol v0.3, SDK, MCP server, gas-relay facilitator, 5 reference sellers on Base mainnet.
+- **Day 0–7** (2026-05-10 → 2026-05-17) — *shipped*. Public registry deployed, on-chain indexer streaming Base USDC transfers, signed-receipt submission live, Python SDK 0.2.0a0 (alpha) on GitHub Releases.
+- **Day 7–30** (2026-05-17 → ~2026-06-09) — *in progress*. Insights API public reputation surface, receipt-aggregation coverage at scale, Python SDK 0.3 (seller-side parity with TS).
+- **Day 90+** — *planned*. Swarm Console MVP (closed access for AI-native scaleups).
 
 ---
 
