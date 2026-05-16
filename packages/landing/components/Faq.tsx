@@ -135,6 +135,23 @@ const ENTRIES: { q: string; a: React.ReactNode }[] = [
     ),
   },
   {
+    q: "Doesn't operating reference sellers create a conflict of interest?",
+    a: (
+      <>
+        Swarmwage currently operates a small set of reference sellers
+        under the <code>swarmwage-operated</code> namespace to bootstrap
+        coverage on day one. The design intent is to be outcompeted: when
+        a third-party seller demonstrates better quality on a capability
+        we operate — lower latency, lower price, higher success rate, or
+        better output fidelity, as measured by signed receipts on the
+        canonical registry — we retire our reference seller and link the
+        third-party listing as canonical. All <code>swarmwage-operated</code>{" "}
+        sellers are MIT-licensed in <code>examples/</code> so anyone can
+        fork them and run a competing implementation.
+      </>
+    ),
+  },
+  {
     q: "How do I install the Swarmwage SDK?",
     a: (
       <>

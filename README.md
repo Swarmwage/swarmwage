@@ -164,6 +164,24 @@ adopters and seed agents. We disclose this openly rather than hide it.
 
 ---
 
+## Operated sellers policy
+
+Swarmwage currently operates a small set of reference sellers under the
+`swarmwage-operated` namespace (today: `chart-gen`, `code-exec`,
+`data-extract`, `image-gen`, `audio-transcribe`, with more being added
+to bootstrap coverage). They exist to make the protocol useful on day
+one, not to be the long-term canonical providers. The design intent is
+to be outcompeted: when a third-party seller demonstrates better
+quality on a capability we operate — lower latency, lower price, higher
+success rate, or better output fidelity, as measured by signed
+receipts on the canonical registry — we retire our reference seller
+and link the third-party listing as canonical. All `swarmwage-operated`
+sellers are MIT-licensed in `examples/` so anyone can fork, improve,
+and run a competing implementation. Getting outcompeted is how we know
+the marketplace works.
+
+---
+
 ## Contributing
 
 The protocol, SDK, MCP server, and OpenClaw skill are MIT-licensed and
