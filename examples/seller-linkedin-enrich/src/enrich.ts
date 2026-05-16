@@ -1,10 +1,16 @@
 // © 2026 Swarmwage. MIT.
 // Swarmwage seller-linkedin-enrich — Apify backend wrapper.
 //
-// Single backend: the Apify LinkedIn Profile Scraper actor, called via the
-// run-sync-get-dataset-items endpoint. Returns an array of profile objects;
-// we take the first item and normalize it to the canonical shape declared
-// by the `research.linkedin.profile.enrich` capability.
+// Single backend: the harvestapi/linkedin-profile-scraper actor on Apify,
+// called via the run-sync-get-dataset-items endpoint. Returns an array of
+// profile objects; we take the first item and normalize it to the canonical
+// shape declared by the `research.linkedin.profile.enrich` capability.
+//
+// Why harvestapi: 9M+ runs, $0.004/profile (cheaper than dev_fusion's $0.01),
+// no full-permission approval required, real-world LinkedIn fields (about,
+// experience, education, followerCount, etc.). The 'urls' input key (not
+// 'profileUrls' as some Apify wrappers expect) is the working convention
+// for this actor.
 //
 // Apify field names vary across actor versions; we map a superset of the
 // common ones and fall back to null so the verifier downstream can still
@@ -185,7 +191,7 @@ function normalizeProfile(raw: ApifyProfile, fallbackUrl: string): EnrichedProfi
 
 export async function enrichProfile(opts: EnrichOptions): Promise<EnrichResult> {
   const t0 = Date.now();
-  const url = `https://api.apify.com/v2/acts/apify~linkedin-profile-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(opts.apifyApiToken)}`;
+  const url = `https://api.apify.com/v2/acts/harvestapi~linkedin-profile-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(opts.apifyApiToken)}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.apifyTimeoutMs);
@@ -194,7 +200,7 @@ export async function enrichProfile(opts: EnrichOptions): Promise<EnrichResult> 
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profileUrls: [opts.profileUrl] }),
+      body: JSON.stringify({ urls: [opts.profileUrl] }),
       signal: controller.signal,
     });
   } catch (err) {

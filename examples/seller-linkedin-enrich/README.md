@@ -1,6 +1,6 @@
 # @swarmwage/example-seller-linkedin-enrich
 
-Reference seller for the `research.linkedin.profile.enrich` capability. Takes a public LinkedIn profile URL and returns a normalized profile object (name, headline, location, current position, company, summary, skills). Wraps the [Apify LinkedIn Profile Scraper actor](https://apify.com/apify/linkedin-profile-scraper) (`apify/linkedin-profile-scraper`).
+Reference seller for the `research.linkedin.profile.enrich` capability. Takes a public LinkedIn profile URL and returns a normalized profile object (name, headline, location, current position, company, summary, skills). Wraps the [harvestapi/linkedin-profile-scraper actor on Apify](https://apify.com/harvestapi/linkedin-profile-scraper) (`harvestapi/linkedin-profile-scraper`).
 
 This is a reference implementation under the `swarmwage-operated` seed cluster — fork it and run it with your own Apify token if you want to operate the same capability under your own wallet.
 
@@ -8,7 +8,7 @@ This is a reference implementation under the `swarmwage-operated` seed cluster �
 
 - **Apify** runs the actual scrape inside an actor that handles LinkedIn's bot defenses, proxy rotation, login pools, etc. We do not re-implement any of that.
 - **Single backend, no fallback (v1)**. If Apify returns 5xx, times out, or returns an empty dataset, the seller responds 502 and the buyer is not charged.
-- **Cost per hire**: $0.50 USDC per profile. Apify's actor charges roughly $0.01–0.05 per successful run on standard plans, leaving comfortable margin for the seller operator.
+- **Cost per hire**: $0.50 USDC per profile. The harvestapi actor charges $0.004 per profile result on Apify, leaving the seller operator a ~99% margin. Verified end-to-end with a 5.2s latency on the Satya Nadella public profile (Day 11 smoke test).
 
 ## Setup
 
