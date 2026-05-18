@@ -447,7 +447,15 @@ function priceUsdcToAtomic(price: string): string {
 // Boot
 // -------------------------------------------------------------------------
 
-(async () => {
+// Start the HTTP server FIRST, then publish the listing from the startup
+// callback. The registry verifies endpoint ownership (ENDPOINT_VERIFY_MODE=
+// enforce) by calling our /__swarmwage/verify route during the publish
+// handler — if the server isn't listening yet the reverse proxy returns 502
+// and publish is rejected.
+serve({ fetch: app.fetch, port: PORT }, async () => {
+  process.stderr.write(
+    `seller-linkedin-enrich v0.1.0 listening on ${PUBLIC_URL} (agent_id=${agentId})\n`,
+  );
   try {
     await publishListing();
   } catch (err) {
@@ -455,10 +463,4 @@ function priceUsdcToAtomic(price: string): string {
       `seller-linkedin-enrich: WARN failed to publish listing — ${(err as Error).message}\n`,
     );
   }
-
-  serve({ fetch: app.fetch, port: PORT }, () => {
-    process.stderr.write(
-      `seller-linkedin-enrich v0.1.0 listening on ${PUBLIC_URL} (agent_id=${agentId})\n`,
-    );
-  });
-})();
+});
