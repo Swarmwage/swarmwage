@@ -50,6 +50,24 @@ import {
 
 export type SwarmwageNetwork = "base" | "base-sepolia";
 
+// USDC has 6 decimals on Base; convert a decimal string ("0.50") to atomic
+// units (500_000n). Rounds up on the last decimal so a buyer who set the cap
+// to "0.50" doesn't get tripped by floating-point representation of the
+// seller's price.
+function usdcStringToAtomic(amount: string): bigint {
+  const [intPart, fracRaw = ""] = amount.split(".");
+  const frac = (fracRaw + "000000").slice(0, 6);
+  const combined = `${intPart}${frac}`.replace(/^0+(?=\d)/, "");
+  return BigInt(combined === "" ? "0" : combined);
+}
+
+// Used for the default (non-hire) paidFetch that the AgentClient instantiates
+// at construction. The constructor doesn't know per-call price caps, so we
+// pick a generous default (10 USDC = 10_000_000 atomic) — high enough not to
+// shadow any sane price, but still bounded so a runaway seller can't drain
+// the wallet on a single accidental call.
+const DEFAULT_PAID_FETCH_MAX_VALUE_ATOMIC = 10_000_000n;
+
 export interface AgentClientOptions extends WalletConfig {
   /** Override the canonical registry URL. */
   registryUrl?: string;
@@ -116,9 +134,15 @@ export class AgentClient {
     // viem's `WalletClient` types `account` as `Account | undefined` even when
     // we know it's a defined PrivateKeyAccount; x402-fetch's SignerWallet type
     // requires the narrower form. We cast at the boundary.
+    //
+    // Default-tier paidFetch (used outside hire(), e.g. for /v1/listings etc.)
+    // — gets a high default maxValue so it doesn't bottleneck on x402-fetch's
+    // 0.10 USDC default. Per-hire paidFetch is constructed inside hire() with
+    // the caller's actual max_price_usdc as the cap.
     const paidFetch = wrapFetchWithPayment(
       globalThis.fetch,
       this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
+      DEFAULT_PAID_FETCH_MAX_VALUE_ATOMIC,
     ) as unknown as typeof fetch;
 
     this.budgetState = opts.budget ? createBudgetState(opts.budget) : null;
@@ -237,11 +261,17 @@ export class AgentClient {
         "(any)",
       );
     }
+    // Convert the caller's max_price_usdc cap into x402-fetch's atomic-units
+    // maxValue parameter. Without this the underlying x402-fetch defaults to
+    // 0.10 USDC and rejects any priced seller above that — the SDK's own
+    // max_price_usdc parameter would be silently shadowed by the lower
+    // hardcoded floor. We honor the caller's cap exactly.
+    const hireMaxValueAtomic = usdcStringToAtomic(req.max_price_usdc);
     const paidFetchForHire = validateSeller && sellerId
       ? (wrapFetchWithPayment(
           globalThis.fetch,
           this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
-          undefined,
+          hireMaxValueAtomic,
           makeAntiHijackSelector(sellerId, this.network, this.facilitatorUrl),
         ) as unknown as typeof fetch)
       : undefined;
