@@ -171,7 +171,7 @@ async function publishListing(): Promise<void> {
     price_usdc: PRICE_USDC,
     currency: "USDC" as const,
     chain: "base" as const,
-    max_latency_ms: 90_000,
+    max_latency_ms: 60_000,
     first_call_free: true,
     endpoint: PUBLIC_URL,
   };
