@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT
 #
-# Build context: `packages/tournament/` (NOT buyer-agent/) so the sibling
+# Build context: `packages/tournament/` (NOT agent-runner/) so the sibling
 # `shared/` workspace package is reachable. Update docker-compose context
-# accordingly: `context: ../..` (relative to ops/docker/).
+# accordingly: `context: ../..` (relative to ops/docker/) — see Track A5.
 FROM node:20-alpine AS build
 
 WORKDIR /app
@@ -12,9 +12,9 @@ WORKDIR /app
 COPY shared/package.json ./shared/package.json
 COPY shared/src ./shared/src
 
-WORKDIR /app/buyer-agent
-COPY buyer-agent/package.json buyer-agent/tsconfig.json ./
-COPY buyer-agent/src ./src
+WORKDIR /app/agent-runner
+COPY agent-runner/package.json agent-runner/tsconfig.json ./
+COPY agent-runner/src ./src
 
 # Rewrite the workspace:* specs for npm install:
 #   - tournament-shared → file:../shared (sibling staged above)
@@ -27,13 +27,14 @@ RUN sed -i \
  && npx tsc
 
 FROM node:20-alpine
-RUN addgroup -g 1001 -S buyer && adduser -u 1001 -S buyer -G buyer
+RUN addgroup -g 1001 -S agent && adduser -u 1001 -S agent -G agent
 WORKDIR /app
 
-COPY --from=build /app/buyer-agent/node_modules ./node_modules
-COPY --from=build /app/buyer-agent/dist ./dist
-COPY --from=build /app/buyer-agent/package.json ./
+COPY --from=build /app/agent-runner/node_modules ./node_modules
+COPY --from=build /app/agent-runner/dist ./dist
+COPY --from=build /app/agent-runner/package.json ./
 
-USER buyer
+USER agent
+EXPOSE 3000
 
 CMD ["node", "dist/index.js"]

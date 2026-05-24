@@ -1,0 +1,33 @@
+{
+  "name": "@swarmwage/tournament-agent-runner",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Per-agent runtime — multi-LLM tool-loop dogfooding the Swarmwage SDK",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@swarmwage/agent-sdk": "workspace:*",
+    "@swarmwage/tournament-shared": "workspace:*",
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/mistral": "^1.0.0",
+    "ai": "^4.0.0",
+    "@hono/node-server": "^1.13.0",
+    "hono": "^4.6.0",
+    "viem": "^2.30.0",
+    "x402-fetch": "^0.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0"
+  }
+}

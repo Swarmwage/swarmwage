@@ -1,0 +1,41 @@
+{
+  "name": "@swarmwage/tournament",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous-agent tournament framework on the Swarmwage protocol",
+  "license": "MIT",
+  "scripts": {
+    "wallets:generate": "tsx scripts/generate-wallets.ts",
+    "wallets:fund": "tsx scripts/fund-wallets.ts",
+    "dryrun": "tsx scripts/dry-run-bridge.ts",
+    "smoke": "bash scripts/smoke-all.sh",
+    "smoke:one": "tsx agent-runner/src/smoke.ts",
+    "start": "docker compose -f ops/docker/docker-compose.yml up -d",
+    "stop": "docker compose -f ops/docker/docker-compose.yml down",
+    "settle": "tsx scripts/settle-tournament.ts",
+    "lint": "echo 'noop'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@swarmwage/agent-sdk": "workspace:*",
+    "hono": "^4.6.0",
+    "@hono/node-server": "^1.13.0",
+    "viem": "^2.30.0",
+    "x402-fetch": "^0.4.0",
+    "ai": "^4.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0",
+    "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/mistral": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

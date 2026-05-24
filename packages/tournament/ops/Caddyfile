@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Swarmwage
+#
+# Caddyfile for the tournament host VM.
+#
+# Public ingress is leaderboard-only. The 10 agent containers and the
+# wallet-svc / orchestrator / egress-proxy services stay on Docker's
+# `internal` network and are NEVER exposed to the internet.
+#
+# Place this at /etc/caddy/Caddyfile on the host (NOT inside a container).
+# Caddy on the host listens on :80 and :443, obtains a Let's Encrypt cert
+# automatically, and forwards plaintext HTTP to the leaderboard container,
+# which is bound only on 127.0.0.1:8080 by docker-compose.
+
+{
+	# Global options
+	email luciano@swarmwage.com
+	# Production ACME issuer (default). Uncomment the next line to test against
+	# Let's Encrypt staging if you hit rate limits during repeated re-deploys.
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# --- Public leaderboard -----------------------------------------------------
+tournament.swarmwage.com {
+	encode zstd gzip
+
+	# Security headers. The leaderboard is read-only public — no cookies,
+	# no auth, no third-party iframes.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options    "nosniff"
+		X-Frame-Options           "DENY"
+		Referrer-Policy           "no-referrer"
+		Permissions-Policy        "geolocation=(), microphone=(), camera=()"
+		Content-Security-Policy   "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.swarmwage.com; frame-ancestors 'none'"
+		-Server
+	}
+
+	# Aggressive rate-limit on the JSON APIs (the static page is fine).
+	# Requires the caddy-ratelimit module; if not installed, comment out.
+	# rate_limit {
+	#     zone tournament_api {
+	#         key    {remote_host}
+	#         events 120
+	#         window 1m
+	#     }
+	#     match {
+	#         path /api/*
+	#     }
+	# }
+
+	# Leaderboard container is published on 127.0.0.1:8080 by docker-compose.
+	reverse_proxy 127.0.0.1:8080 {
+		health_uri      /health
+		health_interval 10s
+		health_timeout  3s
+		# Surface upstream timing for observability.
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Access log to journald-friendly stdout; rotate handled by systemd.
+	log {
+		output  stdout
+		format  json
+		level   INFO
+	}
+}
+
+# --- Apex / www catchall ----------------------------------------------------
+# Anyone hitting the box IP directly or a stray subdomain gets a 404, not the
+# leaderboard. Prevents accidental exposure if DNS misroutes.
+:80 {
+	respond "not found" 404
+}
+
+:443 {
+	tls internal
+	respond "not found" 404
+}

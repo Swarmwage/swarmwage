@@ -24,8 +24,8 @@
 # previously booted without WALLET_SVC_URL because of this footgun.
 x-agent: &agent-base
   build:
-    context: ../../agent-runner
-    dockerfile: Dockerfile
+    context: ../..
+    dockerfile: agent-runner/Dockerfile
   read_only: true
   tmpfs:
     - /tmp:size=50m
@@ -79,8 +79,8 @@ services:
 
   orchestrator:
     build:
-      context: ../../orchestrator
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: orchestrator/Dockerfile
     environment:
       WALLET_SVC_URL: http://wallet-svc:7000
       AGENT_IDS: agent_01,agent_02,agent_03,agent_04,agent_05,agent_06,agent_07,agent_08,agent_09,agent_10
@@ -265,8 +265,8 @@ services:
   # seller HTTP surface — it only initiates hires.
   buyer_01:
     build:
-      context: ../../buyer-agent
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: buyer-agent/Dockerfile
     read_only: true
     tmpfs:
       - /tmp:size=50m
@@ -298,8 +298,8 @@ services:
 
   buyer_02:
     build:
-      context: ../../buyer-agent
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: buyer-agent/Dockerfile
     read_only: true
     tmpfs:
       - /tmp:size=50m
