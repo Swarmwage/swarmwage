@@ -70,6 +70,18 @@ export class PostgresStore implements RegistryStore {
       max: opts.max ?? 5,
       prepare: false,
       types: { bigint: postgres.BigInt },
+      // Pool resilience. Without these, postgres-js keeps connections open
+      // forever; when Supabase's pgbouncer recycles an idle server-side
+      // connection the client doesn't notice the dead socket, so the next
+      // query on it hangs indefinitely. With max:5 it takes only 5 such
+      // wedged connections to make every DB-backed endpoint time out while
+      // /health (no DB) still answers — exactly the outage seen 2026-05-26.
+      //   idle_timeout  — proactively close idle conns before pgbouncer does
+      //   max_lifetime  — recycle every conn well inside the pooler's window
+      //   connect_timeout — fail fast on connect instead of hanging a request
+      idle_timeout: 30,
+      max_lifetime: 60 * 30,
+      connect_timeout: 10,
     });
   }
 
