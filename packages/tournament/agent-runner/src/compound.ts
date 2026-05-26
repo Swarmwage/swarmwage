@@ -181,9 +181,16 @@ async function safeSearchAgents(
   capability: string,
 ): Promise<SearchResultEntry[]> {
   try {
+    // Component capabilities are published under the tournament prefix
+    // (e.g. `tournament.2026-05-26.text.long-form`), so search for the
+    // prefixed name unless the caller already passed a prefixed/compound id.
+    const q =
+      capability.startsWith(ctx.capabilityPrefix) || capability.startsWith('compound.')
+        ? capability
+        : `${ctx.capabilityPrefix}${capability}`;
     const results = await searchAgents({
       registryUrl: ctx.registryUrl,
-      capability,
+      capability: q,
       limit: SEARCH_LIMIT,
     });
     return results.filter((r) => r.agent_id.toLowerCase() !== ctx.agentAddress);

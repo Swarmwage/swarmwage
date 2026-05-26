@@ -1,30 +1,39 @@
 # SPDX-License-Identifier: MIT
 #
 # Build context: `packages/tournament/` (NOT agent-runner/) so the sibling
-# `shared/` workspace package is reachable. Update docker-compose context
-# accordingly: `context: ../..` (relative to ops/docker/) — see Track A5.
+# `shared/` workspace package is reachable. docker-compose context is `../..`
+# (relative to ops/docker/).
 FROM node:20-alpine AS build
 
 WORKDIR /app
 
-# Stage the shared workspace package first so npm (which has no workspace
-# awareness here) can resolve it via a file: path.
-COPY shared/package.json ./shared/package.json
+# Stage + BUILD the shared workspace package first. We compile it to dist/ JS
+# here so the runtime never has to execute .ts, and so we can replace npm's
+# file: SYMLINK with a real directory (a multi-stage COPY would otherwise leave
+# a dangling symlink pointing at a /shared the final stage never copies).
+COPY shared/package.json shared/tsconfig.build.json ./shared/
 COPY shared/src ./shared/src
+RUN cd shared \
+ && npm install --omit=optional --no-audit --no-fund typescript@5.5.4 \
+ && npx tsc -p tsconfig.build.json \
+ && rm -rf node_modules
 
 WORKDIR /app/agent-runner
 COPY agent-runner/package.json agent-runner/tsconfig.json ./
 COPY agent-runner/src ./src
 
 # Rewrite the workspace:* specs for npm install:
-#   - tournament-shared → file:../shared (sibling staged above)
-#   - agent-sdk → published npm version (^0.5.1) since npm has no workspace awareness
+#   - tournament-shared -> file:../shared (sibling built above)
+#   - agent-sdk -> published npm version since npm has no workspace awareness
 RUN sed -i \
   -e 's|"@swarmwage/tournament-shared": "workspace:\*"|"@swarmwage/tournament-shared": "file:../shared"|' \
   -e 's|"@swarmwage/agent-sdk": "workspace:\*"|"@swarmwage/agent-sdk": "^0.5.1"|' \
   package.json \
  && npm install --omit=optional --no-audit --no-fund \
- && npx tsc
+ && npx tsc \
+ && rm -rf node_modules/@swarmwage/tournament-shared \
+ && mkdir -p node_modules/@swarmwage/tournament-shared \
+ && cp -RL /app/shared/package.json /app/shared/dist node_modules/@swarmwage/tournament-shared/
 
 FROM node:20-alpine
 RUN addgroup -g 1001 -S agent && adduser -u 1001 -S agent -G agent

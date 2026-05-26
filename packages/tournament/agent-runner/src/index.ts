@@ -9,16 +9,21 @@
 //   2. **Seller** — Hono server on :3000 with a route per published capability;
 //      incoming hires generate deliverables by calling the same LLM.
 
+import './proxy-bootstrap.js';
 import { serve } from '@hono/node-server';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
+import { paymentMiddleware, type Network } from 'x402-hono';
+import { SWARMWAGE_FACILITATOR_URL } from '@swarmwage/agent-sdk';
 import { generateText } from 'ai';
 import { existsSync, mkdirSync, appendFileSync } from 'node:fs';
 import { createRemoteAccount } from './remote-account.js';
 import { pickModel, resolveLanguageModel } from './llm.js';
 import { buildTools, type ToolContext } from './tools.js';
 import { buildSystemPrompt } from './system-prompt.js';
-import { publishListing, submitReceipt } from './sdk-bridge.js';
+import { publishListing, submitReceipt, searchAgents } from './sdk-bridge.js';
+import { getListedPrice, recordListedPrice } from './price-registry.js';
 import { fulfillCompound } from './compound.js';
+import { emitTick } from './emit-tick.js';
 import {
   COMPOUND_TEMPLATES,
   estimateComponentCost,
@@ -49,6 +54,11 @@ const COMPOUND_MAX_LATENCY_MS = Number(process.env.COMPOUND_MAX_LATENCY_MS ?? 60
 const MEMORY_DIR = process.env.MEMORY_DIR ?? '/agent/memory';
 const TICK_LOG = `${MEMORY_DIR}/tick-log.jsonl`;
 const PORT = Number(process.env.PORT ?? 3000);
+// Seller-side x402 paywall: the facilitator that verifies the buyer's
+// X-PAYMENT and settles the EIP-3009 transfer on-chain (gas-relay only).
+// Defaults to the Swarmwage facilitator — the same one buyers point to.
+const FACILITATOR_URL = process.env.FACILITATOR_URL ?? SWARMWAGE_FACILITATOR_URL;
+const PAYMENT_NETWORK = (process.env.PAYMENT_NETWORK ?? 'base') as Network;
 
 function required(name: string): string {
   const v = process.env[name];
@@ -105,17 +115,67 @@ const languageModel = resolveLanguageModel(modelSpec);
   });
 
   // Seller HTTP surface — receives hire payloads from buyers via x402.
-  // The x402-aware buyer's facilitator handles settlement; our role here is
-  // to (a) generate a deliverable, (b) submit a signed receipt to the
-  // registry so our reputation reflects the work.
   const sellerApp = new Hono();
   sellerApp.get('/health', (c) => c.json({ ok: true, agent_id: AGENT_ID, address }));
+
+  // Seller-side x402 paywall. Resolves the authoritative price THIS agent
+  // advertised for the requested capability, returns a 402 challenge, then lets
+  // x402-hono verify the buyer's X-PAYMENT header and settle the EIP-3009
+  // transfer on-chain via the facilitator BEFORE the deliverable handler runs.
+  // Without this gate the route returned 200 with no payment and no USDC ever
+  // moved — the buyer's wrapFetchWithPayment only pays when it receives a 402.
+  const x402PaywallGate = async (c: Context, next: () => Promise<void>) => {
+    const cap = c.req.param('name');
+    const price = cap ? await resolveListedPrice(cap) : undefined;
+    if (!price) {
+      // We never advertised this capability → refuse rather than work for free.
+      return c.json({ error: `capability not offered by this agent: ${cap}` }, 404);
+    }
+    // Price is chosen at runtime and differs per capability, so we build the
+    // middleware per-request with the resolved price. The route key MUST be a
+    // catch-all glob: x402's `computeRoutePatterns` turns a bare `{price,…}`
+    // object into literal `price`/`network` route keys (which never match the
+    // path), and an exact `POST /capabilities/<dotted-cap>/hire` key proved
+    // fragile behind the leaderboard proxy. `POST /*` → `^\/.*?$` matches any
+    // path; since this middleware is only ever invoked on the hire route, the
+    // catch-all is safe and always enforces the 402.
+    const mw = paymentMiddleware(
+      address,
+      { 'POST /*': { price: `$${price}`, network: PAYMENT_NETWORK } },
+      { url: FACILITATOR_URL as `${string}://${string}` },
+    );
+    return mw(c, next);
+  };
+
+  // Resolve the authoritative price for `cap`. Prefers the in-process map
+  // (populated on publish), but falls back to the registry listing this agent
+  // published — the in-process map is empty after a restart while listings
+  // persist in the registry DB, so without this fallback the gate would 404
+  // legitimate hires until the agent happens to re-publish.
+  async function resolveListedPrice(cap: string): Promise<string | undefined> {
+    const listed = getListedPrice(cap);
+    if (listed) return listed.price_usdc;
+    try {
+      const entries = await searchAgents({ registryUrl: REGISTRY_URL, capability: cap, limit: 50 });
+      const mine = entries.find((e) => e.agent_id.toLowerCase() === address.toLowerCase());
+      if (mine?.listing?.price_usdc) {
+        recordListedPrice(cap, mine.listing.price_usdc, mine.listing.first_call_free ?? false);
+        return mine.listing.price_usdc;
+      }
+    } catch (err) {
+      console.error(`[agent ${AGENT_ID}] price fallback lookup failed for ${cap}:`, err);
+    }
+    return undefined;
+  }
+
   // Route MUST end in `/hire` to match the SDK convention used by every
   // buyer (sdk-bridge + tournament-buyer-agent both POST `${endpoint}/hire`).
   // The published listing endpoint is `${MY_ENDPOINT_BASE}/capabilities/<name>`;
   // the buyer appends `/hire` to it.
-  sellerApp.post('/capabilities/:name/hire', async (c) => {
-    const cap = c.req.param('name');
+  sellerApp.post('/capabilities/:name/hire', x402PaywallGate, async (c) => {
+    // Guaranteed present: the route binds `:name` and x402PaywallGate already
+    // 404s when the capability isn't listed (which requires a defined name).
+    const cap = c.req.param('name')!;
     const payload = await c.req.json();
     const buyerAddress = (payload?.buyer_id ?? '0x0').toString().toLowerCase();
 
@@ -248,6 +308,12 @@ const languageModel = resolveLanguageModel(modelSpec);
       const usd = estimateUsd(modelSpec, result.usage);
       cumulativeUsd += usd;
 
+      // Derive a high-level action label from the tool calls this tick made.
+      const toolNames = (result.steps ?? [])
+        .flatMap((s) => (s.toolCalls ?? []).map((tc) => tc.toolName))
+        .filter(Boolean);
+      const action = pickAction(toolNames);
+
       appendFileSync(
         TICK_LOG,
         JSON.stringify({
@@ -260,6 +326,16 @@ const languageModel = resolveLanguageModel(modelSpec);
           text: result.text.slice(0, 400),
         }) + '\n',
       );
+
+      // Fire-and-forget telemetry to the public dashboard (no-op unless
+      // COLLECTOR_URL is set; safe, 2s-bounded, internal-network only).
+      emitTick({
+        agent_id: AGENT_ID,
+        tick: tickN,
+        action,
+        rationale: result.text.slice(0, 600),
+        detail: { tools: toolNames.slice(0, 6), api_usd_cum: Number(cumulativeUsd.toFixed(3)) },
+      });
     } catch (err) {
       appendFileSync(
         TICK_LOG,
@@ -314,6 +390,8 @@ async function publishCompoundListings(args: {
         max_latency_ms: Math.min(COMPOUND_MAX_LATENCY_MS, template.delivery_window_s * 1000),
         first_call_free: false,
       });
+      // Make the price enforceable by the seller paywall.
+      recordListedPrice(template.name, priceUsdc, false);
       console.log(
         `[agent ${args.agentId}] published ${template.name} at ${priceUsdc} USDC (band ${template.buyer_min_usdc}-${template.buyer_max_usdc})`,
       );
@@ -325,6 +403,24 @@ async function publishCompoundListings(args: {
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Collapse the tool calls made in a tick into one headline verb for the
+ * public dashboard. Priority order reflects what's most interesting to watch:
+ * a hire/publish beats a passive search/leaderboard read.
+ */
+function pickAction(toolNames: string[]): string {
+  const has = (n: string) => toolNames.includes(n);
+  if (has('hire_agent')) return 'hire';
+  if (has('publish_listing')) return 'publish';
+  if (has('inspect_compound_market')) return 'inspect-market';
+  if (has('search_agents')) return 'search';
+  if (has('check_reputation')) return 'check-reputation';
+  if (has('leaderboard') || has('recent_market_activity')) return 'observe';
+  if (has('note_to_self') || has('read_my_notes')) return 'plan';
+  if (has('check_my_balance') || has('list_my_listings')) return 'review';
+  return toolNames.length ? toolNames[0] : 'think';
 }
 
 interface UsageLike {

@@ -16,6 +16,7 @@ import {
   hireAgent,
   listMyListings,
 } from './sdk-bridge.js';
+import { recordListedPrice } from './price-registry.js';
 import { COMPOUND_TEMPLATES } from '@swarmwage/tournament-shared';
 
 export interface ToolContext {
@@ -127,7 +128,7 @@ export function buildTools(ctx: ToolContext) {
         }
         try {
           const endpoint = `${ctx.myEndpointBase}/capabilities/${encodeURIComponent(capability)}`;
-          return await publishListing({
+          const listing = await publishListing({
             account: ctx.account,
             registryUrl: ctx.registryUrl,
             capability,
@@ -136,6 +137,9 @@ export function buildTools(ctx: ToolContext) {
             max_latency_ms,
             first_call_free,
           });
+          // Make the price enforceable by the seller paywall (index.ts).
+          recordListedPrice(capability, price_usdc, !!first_call_free);
+          return listing;
         } catch (e) {
           return { error: String(e) };
         }
