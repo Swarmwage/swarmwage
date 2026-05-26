@@ -168,11 +168,63 @@ const languageModel = resolveLanguageModel(modelSpec);
     return undefined;
   }
 
+  // Receipt post-hook. Mounted BEFORE the paywall gate so its post-`next()`
+  // phase runs AFTER x402-hono has settled and attached the X-PAYMENT-RESPONSE
+  // header (in x402-hono v1.2 settlement happens after next()). Only then is
+  // the real on-chain tx hash known. Submitting a placeholder '0x0' (as the
+  // old inline calls did) is rejected by the registry's tx_hash regex, so no
+  // reputation ever registered.
+  const submitReceiptPostHook = async (c: Context, next: () => Promise<void>) => {
+    await next();
+    if (c.res.status !== 200) return; // only attest successful deliveries
+    const header = c.res.headers.get('X-PAYMENT-RESPONSE');
+    if (!header) return; // no settlement (e.g. first-call-free) → nothing to attest
+    let tx_hash = '';
+    let payer = '';
+    try {
+      const s = JSON.parse(Buffer.from(header, 'base64').toString('utf8')) as {
+        transaction?: string;
+        payer?: string;
+      };
+      tx_hash = s.transaction ?? '';
+      payer = (s.payer ?? '').toLowerCase();
+    } catch {
+      return;
+    }
+    if (!/^0x[0-9a-fA-F]{64}$/.test(tx_hash)) return; // registry needs a real hash
+    const cap = c.req.param('name');
+    if (!cap) return;
+    let buyer = payer;
+    try {
+      const body = (await c.req.json()) as { buyer_id?: string };
+      if (body?.buyer_id) buyer = String(body.buyer_id).toLowerCase();
+    } catch {
+      /* body already consumed — fall back to the payer from the settlement */
+    }
+    const price = getListedPrice(cap)?.price_usdc ?? '0';
+    const amount_usdc_atomic = String(Math.round(parseFloat(price) * 1e6) || 0);
+    submitReceipt({
+      account,
+      registryUrl: REGISTRY_URL,
+      payload: {
+        protocol_version: 'swarmwage/v0.1',
+        hire_id: crypto.randomUUID(),
+        buyer: (buyer || '0x0') as `0x${string}`,
+        capability: cap,
+        amount_usdc_atomic,
+        network: 'base',
+        tx_hash: tx_hash as `0x${string}`,
+        completed_at: new Date().toISOString(),
+        verification: { all_passed: true, checks: { delivered: true, settled: true } },
+      },
+    }).catch((e) => console.error('receipt submit failed:', e));
+  };
+
   // Route MUST end in `/hire` to match the SDK convention used by every
   // buyer (sdk-bridge + tournament-buyer-agent both POST `${endpoint}/hire`).
   // The published listing endpoint is `${MY_ENDPOINT_BASE}/capabilities/<name>`;
   // the buyer appends `/hire` to it.
-  sellerApp.post('/capabilities/:name/hire', x402PaywallGate, async (c) => {
+  sellerApp.post('/capabilities/:name/hire', submitReceiptPostHook, x402PaywallGate, async (c) => {
     // Guaranteed present: the route binds `:name` and x402PaywallGate already
     // 404s when the capability isn't listed (which requires a defined name).
     const cap = c.req.param('name')!;
@@ -199,25 +251,8 @@ const languageModel = resolveLanguageModel(modelSpec);
           ctx,
           buyerAddress,
         });
-        // Only submit a receipt on full delivery — partial / failed orders
-        // leave the buyer with grounds to dispute via the registry.
-        if (result.status === 'ok') {
-          submitReceipt({
-            account,
-            registryUrl: REGISTRY_URL,
-            payload: {
-              protocol_version: 'swarmwage/v0.1',
-              hire_id: crypto.randomUUID(),
-              buyer: buyerAddress as `0x${string}`,
-              capability: cap,
-              amount_usdc_atomic: '0',
-              network: 'base',
-              tx_hash: '0x0',
-              completed_at: new Date().toISOString(),
-              verification: { all_passed: true, checks: { delivered: true } },
-            },
-          }).catch((e) => console.error('compound receipt submit failed:', e));
-        }
+        // Receipt is submitted by submitReceiptPostHook once settlement is
+        // confirmed (it carries the real on-chain tx hash + amount).
         return c.json({
           compound: true,
           template: compoundTemplate.name,
@@ -248,21 +283,8 @@ const languageModel = resolveLanguageModel(modelSpec);
       prompt: JSON.stringify(payload).slice(0, 8000),
       maxTokens: 800,
     });
-    submitReceipt({
-      account,
-      registryUrl: REGISTRY_URL,
-      payload: {
-        protocol_version: 'swarmwage/v0.1',
-        hire_id: crypto.randomUUID(),
-        buyer: buyerAddress as `0x${string}`,
-        capability: cap,
-        amount_usdc_atomic: '0',
-        network: 'base',
-        tx_hash: '0x0',
-        completed_at: new Date().toISOString(),
-        verification: { all_passed: true, checks: { delivered: true } },
-      },
-    }).catch((e) => console.error('receipt submit failed:', e));
+    // Receipt is submitted by submitReceiptPostHook once settlement is
+    // confirmed (it carries the real on-chain tx hash + amount).
     return c.json({ result: res.text, model: modelSpec.label });
   });
   serve({ fetch: sellerApp.fetch, port: PORT });
