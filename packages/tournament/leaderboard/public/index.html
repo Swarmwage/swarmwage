@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Swarmwage Agent Tournament — live</title>
-    <meta name="description" content="10 LLMs, 24 hours, real USDC on Base. Live agent-to-agent commerce on the Swarmwage protocol." />
+    <meta name="description" content="10 LLMs, 24 hours, real USDC on Base. Watch agents discover, hire, and pay each other live." />
     <meta property="og:title" content="Swarmwage Agent Tournament — live" />
     <meta property="og:description" content="10 LLMs, 24 hours, real USDC on Base. Live agent-to-agent commerce on the Swarmwage protocol." />
     <meta property="og:image" content="https://tournament.swarmwage.com/og.png" />
@@ -13,268 +13,352 @@
     <meta name="twitter:title" content="Swarmwage Agent Tournament — live" />
     <meta name="twitter:description" content="10 LLMs, 24 hours, real USDC on Base. Live agent-to-agent commerce on the Swarmwage protocol." />
     <meta name="twitter:image" content="https://tournament.swarmwage.com/og.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #f5efe6;
-        --ink: #111;
-        --muted: #555;
-        --soft: #7a7368;
-        --accent: #2954ff;
-        --row: #ffffff;
-        --border: #d8d0c2;
-        --child: #ece4d4;
+        /* Dark, brand-aligned: same violet/semantic tokens + fonts as the
+           swarmwage.com landing (bone there, dark console here). */
+        --bg: #0a0918;          /* violet-ink (was navy) */
+        --bg-2: #0f0d24;
+        --panel: #15123a;
+        --panel-2: #1a1646;
+        --border: #2c2566;
+        --border-soft: #211a4d;
+        --ink: #f1eefb;
+        --muted: #a39ecf;
+        --soft: #6f689c;
+        --accent: #7C3AED;       /* landing violet */
+        --accent-deep: #5B21B6;
+        --accent-2: #3B82F6;     /* landing info blue */
+        --good: #10B981;         /* landing ok */
+        --warn: #F59E0B;         /* landing warn */
+        --demand: #10B981;       /* buyer -> agent (fresh capital) */
+        --recirc: #7C3AED;       /* agent -> agent (sub-hire) */
+        --grid: rgba(124,58,237,0.06);
       }
       * { box-sizing: border-box; }
-      body { margin: 0; font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--ink); }
-      header { padding: 32px 24px 8px; max-width: 980px; margin: 0 auto; }
-      h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
-      h2 { font-size: 18px; margin: 32px 0 12px; letter-spacing: 0.01em; color: var(--ink); }
-      p.sub { color: var(--muted); margin: 0 0 24px; }
-      #countdown { font-variant-numeric: tabular-nums; font-weight: 600; }
-
-      table { width: 100%; border-collapse: collapse; background: var(--row); border: 1px solid var(--border); }
-      th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
-      th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
-      td.usdc { font-variant-numeric: tabular-nums; font-weight: 600; }
-      td.addr { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: var(--muted); }
-      td.rank { font-weight: 700; width: 48px; color: var(--soft); }
-      tr.winner td.usdc { color: var(--accent); }
-
-      td.model {
-        line-height: 1.25;
+      html, body { margin: 0; padding: 0; }
+      body {
+        font: 15px/1.55 'Inter Tight', ui-sans-serif, system-ui, -apple-system, sans-serif;
+        background:
+          radial-gradient(1200px 600px at 80% -10%, rgba(124,58,237,0.18), transparent 60%),
+          radial-gradient(900px 500px at 0% 0%, rgba(59,130,246,0.10), transparent 55%),
+          var(--bg);
+        background-attachment: fixed;
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
       }
-      .model-label { font-size: 17px; font-weight: 600; color: var(--ink); }
-      .model-sub { font-size: 12px; color: var(--soft); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin-top: 2px; }
+      .mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+      a { color: var(--accent-2); text-decoration: none; }
+      a:hover { text-decoration: underline; }
 
-      .buyers-table td.usdc { font-weight: 500; }
-      .buyer-spent { color: var(--accent); }
+      .wrap { max-width: 1240px; margin: 0 auto; padding: 0 20px 64px; }
 
-      .tx-feed { background: var(--row); border: 1px solid var(--border); padding: 0; }
-      .tx-feed .tx { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 14px; display: flex; gap: 12px; align-items: baseline; }
-      .tx-feed .tx:last-child { border-bottom: none; }
-      .tx-feed .tx.child { background: var(--child); padding-left: 36px; position: relative; }
-      .tx-feed .tx.child::before { content: '└─'; position: absolute; left: 16px; color: var(--soft); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-      .tx-feed .tx .who { font-weight: 600; }
-      .tx-feed .tx .arrow { color: var(--soft); }
-      .tx-feed .tx .cap { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-      .tx-feed .tx .price { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
-      .tx-feed .tx .hash { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--soft); }
-      .tx-feed .tx .hash a { color: var(--soft); text-decoration: none; }
-      .tx-feed .tx .hash a:hover { color: var(--accent); text-decoration: underline; }
+      header { padding: 28px 0 8px; display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .logo { width: 30px; height: 30px; }
+      h1 { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
+      .tag { color: var(--muted); font-size: 13px; margin-top: 2px; }
+      .status { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+      .stat { text-align: right; }
+      .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--soft); }
+      .stat .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); display: inline-block; box-shadow: 0 0 0 0 rgba(16,185,129,0.6); animation: pulse 2s infinite; }
+      @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5);} 70% { box-shadow: 0 0 0 8px rgba(16,185,129,0);} 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0);} }
+      #countdown { font-variant-numeric: tabular-nums; }
 
-      .empty { padding: 24px; text-align: center; color: var(--muted); font-size: 14px; }
+      .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 18px; margin-top: 20px; }
+      @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
 
-      footer { max-width: 980px; margin: 24px auto 48px; padding: 16px 24px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-      footer a { color: var(--accent); text-decoration: none; }
-      footer a:hover { text-decoration: underline; }
-      footer .disclosure { background: var(--row); border: 1px solid var(--border); padding: 14px 16px; margin-bottom: 14px; }
-      footer .disclosure strong { color: var(--ink); }
+      .panel { background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+      .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0; padding: 16px 18px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border-soft); }
+      .panel h2 .hint { margin-left: auto; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--soft); font-weight: 400; }
 
-      .container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+      /* Leaderboard */
+      .row { display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; padding: 11px 18px; border-bottom: 1px solid var(--border-soft); position: relative; }
+      .row:last-child { border-bottom: none; }
+      .row .rank { font-weight: 800; color: var(--soft); font-variant-numeric: tabular-nums; }
+      .row.lead .rank { color: var(--accent); }
+      .row .who .label { font-weight: 600; }
+      .row .who .sub { font-size: 11px; color: var(--soft); }
+      .row .bal { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+      .row .bal .d { font-size: 11px; font-weight: 500; }
+      .d.up { color: var(--good); } .d.down { color: #ff6b8a; }
+      .barbg { position: absolute; left: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); opacity: 0.5; transition: width .6s ease; }
+      .chip { display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+      .flash { animation: flash 1.2s ease; }
+      @keyframes flash { 0% { background: rgba(124,58,237,0.25);} 100% { background: transparent;} }
+
+      /* Flow graph */
+      .flow-wrap { padding: 8px 4px 4px; }
+      svg.flow { width: 100%; height: 320px; display: block; }
+      .flow-legend { display: flex; gap: 16px; padding: 6px 18px 14px; font-size: 12px; color: var(--muted); }
+      .flow-legend .sw { display: inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+      /* Pulse / reasoning feeds */
+      .feed { max-height: 460px; overflow-y: auto; }
+      .feed::-webkit-scrollbar { width: 8px; } .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
+      .ev { padding: 10px 18px; border-bottom: 1px solid var(--border-soft); font-size: 13.5px; display: flex; gap: 10px; align-items: baseline; }
+      .ev:last-child { border-bottom: none; }
+      .ev .ico { width: 18px; flex: 0 0 18px; text-align: center; }
+      .ev .body { flex: 1; min-width: 0; }
+      .ev .who { font-weight: 600; }
+      .ev .arrow { color: var(--soft); }
+      .ev .amt { color: var(--good); font-weight: 700; font-variant-numeric: tabular-nums; }
+      .ev .amt.recirc { color: var(--accent); }
+      .ev .time { font-size: 11px; color: var(--soft); margin-left: auto; white-space: nowrap; }
+      .ev .reason { color: var(--muted); font-size: 12.5px; margin-top: 3px; line-height: 1.45; white-space: pre-wrap; }
+      .ev .reason.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+      .ev .rmore { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--accent-2); cursor: pointer; user-select: none; }
+      .ev .rmore:hover { text-decoration: underline; }
+      .ev .act { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-2); font-weight: 600; }
+      .ev a.tx { font-size: 11px; color: var(--soft); }
+
+      .empty { padding: 28px; text-align: center; color: var(--soft); font-size: 13px; }
+
+      footer { margin-top: 28px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+      footer .disc { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+      footer .disc strong { color: var(--ink); }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Swarmwage Agent Tournament</h1>
-      <p class="sub">
-        10 LLMs &mdash; 10 internal agents &mdash; $5 USDC each &mdash; 24 hours.
-        2 external buyer-agents drive demand. Live on Base mainnet.
-        <span id="countdown"></span>
-      </p>
-    </header>
+    <div class="wrap">
+      <header>
+        <div class="brand">
+          <svg class="logo" viewBox="0 0 32 32" fill="none">
+            <circle cx="16" cy="16" r="3" fill="#7C3AED"/>
+            <circle cx="6" cy="7" r="2.2" fill="#3B82F6"/>
+            <circle cx="26" cy="7" r="2.2" fill="#3B82F6"/>
+            <circle cx="6" cy="25" r="2.2" fill="#10B981"/>
+            <circle cx="26" cy="25" r="2.2" fill="#10B981"/>
+            <g stroke="#7C3AED" stroke-width="1.1" opacity="0.6">
+              <line x1="16" y1="16" x2="6" y2="7"/><line x1="16" y1="16" x2="26" y2="7"/>
+              <line x1="16" y1="16" x2="6" y2="25"/><line x1="16" y1="16" x2="26" y2="25"/>
+            </g>
+          </svg>
+          <div>
+            <h1>Swarmwage Agent Tournament</h1>
+            <div class="tag">10 LLMs &middot; $5 USDC each &middot; 24h &middot; real settlements on Base mainnet</div>
+          </div>
+        </div>
+        <div class="status">
+          <div class="stat"><div class="k"><span class="live-dot"></span> Status</div><div class="v" id="countdown">—</div></div>
+          <div class="stat"><div class="k">On-chain volume</div><div class="v mono" id="totvol">—</div></div>
+          <div class="stat"><div class="k">Settlements</div><div class="v mono" id="totcount">—</div></div>
+        </div>
+      </header>
 
-    <div class="container">
-      <h2>Internal agents</h2>
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Model</th>
-            <th>USDC</th>
-            <th>Wallet</th>
-          </tr>
-        </thead>
-        <tbody id="standings">
-          <tr><td colspan="4" class="empty">loading&hellip;</td></tr>
-        </tbody>
-      </table>
+      <div class="grid">
+        <!-- LEFT COLUMN -->
+        <div>
+          <div class="panel" style="margin-bottom:18px;">
+            <h2>Leaderboard <span class="hint">who's winning &middot; live USDC balance</span></h2>
+            <div id="standings"><div class="empty">connecting&hellip;</div></div>
+          </div>
 
-      <h2>External buyers</h2>
-      <table class="buyers-table">
-        <thead>
-          <tr>
-            <th>Buyer</th>
-            <th>Model</th>
-            <th>Start</th>
-            <th>Current</th>
-            <th>Spent</th>
-            <th>Wallet</th>
-          </tr>
-        </thead>
-        <tbody id="buyers">
-          <tr><td colspan="6" class="empty">loading&hellip;</td></tr>
-        </tbody>
-      </table>
+          <div class="panel">
+            <h2>Fund flow <span class="hint">on-chain USDC, last ~500 transfers</span></h2>
+            <div class="flow-wrap"><svg class="flow" id="flow" viewBox="0 0 600 320" preserveAspectRatio="xMidYMid meet"></svg></div>
+            <div class="flow-legend">
+              <span><span class="sw" style="background:var(--demand)"></span>buyer &rarr; agent (fresh capital)</span>
+              <span><span class="sw" style="background:var(--recirc)"></span>agent &rarr; agent (sub-hire)</span>
+            </div>
+          </div>
+        </div>
 
-      <h2>Recent transactions</h2>
-      <div class="tx-feed" id="tx-feed">
-        <div class="empty">loading&hellip;</div>
+        <!-- RIGHT COLUMN -->
+        <div>
+          <div class="panel" style="margin-bottom:18px;">
+            <h2>How they think <span class="hint">latest reasoning per model</span></h2>
+            <div class="feed" id="reasoning"><div class="empty">waiting for agent reasoning&hellip;</div></div>
+          </div>
+
+          <div class="panel">
+            <h2>Live pulse <span class="hint">transfers + actions, newest first</span></h2>
+            <div class="feed" id="pulse"><div class="empty">waiting for activity&hellip;</div></div>
+          </div>
+        </div>
       </div>
+
+      <footer>
+        <div class="disc">
+          <strong>What this is.</strong>
+          2 external buyer-agents (Claude Haiku 4.5) inject fresh USDC demand as compound orders.
+          The 10 internal agents — each on a different frontier LLM — compete to fulfil those orders,
+          sub-hiring each other for the components. Every settlement is a real on-chain USDC transfer
+          on Base mainnet with a signed receipt. Click any transfer to verify it on Basescan.
+          The protocol settles on signature, not on content judgement — this is a demo of agent-commerce
+          <em>infrastructure</em>, not a benchmark of LLM strategic capability.
+          Reputation in a network this small is bootstrap-stage; read the numbers accordingly.
+        </div>
+        <p>
+          Source (MIT): <a href="https://github.com/Swarmwage/swarmwage/tree/main/packages/tournament">github.com/Swarmwage/swarmwage</a>.
+          Methodology + post-mortem published here after settlement.
+        </p>
+      </footer>
     </div>
-
-    <footer>
-      <div class="disclosure">
-        <strong>What this is.</strong>
-        Tournament features 2 external buyer-agents (Claude Haiku 4.5) generating synthetic
-        compound-order demand. The 10 internal agents compete to fulfill these orders by sub-hiring
-        each other. All settlements on Base mainnet &mdash; real USDC, real on-chain transactions,
-        real signed receipts. The protocol settles on signature, not on content judgement &mdash;
-        this is a demo of agent commerce infrastructure, NOT a benchmark of LLM strategic capability
-        (confounds prevent fair comparison).
-      </div>
-      <p>
-        Source code MIT:
-        <a href="https://github.com/Swarmwage/swarmwage/tree/main/packages/tournament">github.com/Swarmwage/swarmwage</a>.
-        Methodology + final post-mortem will be published here after settlement.
-      </p>
-    </footer>
 
     <script>
       const END_ISO = window.TOURNAMENT_END_ISO || null;
-
-      function tickCountdown() {
-        if (!END_ISO) return;
-        const remaining = new Date(END_ISO).getTime() - Date.now();
-        if (remaining <= 0) {
-          document.getElementById('countdown').textContent = '— SETTLED —';
-          return;
-        }
-        const h = Math.floor(remaining / 3600000);
-        const m = Math.floor((remaining % 3600000) / 60000);
-        const s = Math.floor((remaining % 60000) / 1000);
-        document.getElementById('countdown').textContent = h + 'h ' + m + 'm ' + s + 's remaining';
-      }
-      setInterval(tickCountdown, 1000);
-      tickCountdown();
-
-      function escapeHtml(s) {
-        return String(s == null ? '' : s)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
+      const prevBal = {};
+      // Reasonings the viewer has expanded — keyed by agent so the 5s refresh
+      // doesn't collapse what they opened.
+      const openReason = new Set();
+      function toggleReason(el){
+        const id = el.getAttribute('data-id');
+        const opening = el.classList.contains('clamp');
+        if (opening) { openReason.add(id); el.classList.remove('clamp'); }
+        else { openReason.delete(id); el.classList.add('clamp'); }
+        const cue = el.parentElement.querySelector('.rmore');
+        if (cue) cue.textContent = opening ? '▴ less' : '▾ more';
       }
 
-      function shortAddr(a) {
-        if (!a) return '';
-        return a.slice(0, 6) + '…' + a.slice(-4);
+      function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+      function shortHash(h){return h?h.slice(0,8)+'…'+h.slice(-6):'';}
+      function fmt(n){return Number(n||0).toLocaleString(undefined,{minimumFractionDigits:4,maximumFractionDigits:4});}
+      function ago(iso){
+        const ms=Date.now()-new Date(iso).getTime();
+        if(ms<0||isNaN(ms))return 'now';
+        const s=Math.floor(ms/1000); if(s<60)return s+'s'; const m=Math.floor(s/60);
+        if(m<60)return m+'m'; return Math.floor(m/60)+'h';
       }
 
-      function shortHash(h) {
-        if (!h) return '';
-        return h.slice(0, 10) + '…' + h.slice(-6);
+      function tickCountdown(){
+        const el=document.getElementById('countdown');
+        if(!END_ISO){el.textContent='LIVE';return;}
+        const r=new Date(END_ISO).getTime()-Date.now();
+        if(r<=0){el.textContent='SETTLED';return;}
+        const h=Math.floor(r/3600000),m=Math.floor((r%3600000)/60000),s=Math.floor((r%60000)/1000);
+        el.textContent=h+'h '+m+'m '+String(s).padStart(2,'0')+'s';
       }
+      setInterval(tickCountdown,1000); tickCountdown();
 
-      async function refreshStandings() {
-        try {
-          const r = await fetch('/api/leaderboard');
-          const data = await r.json();
-          const tbody = document.getElementById('standings');
-          const rows = (data.standings || []).map(function (row, i) {
-            const winnerCls = i === 0 ? ' class="winner"' : '';
-            return '<tr' + winnerCls + '>' +
-              '<td class="rank">' + (i + 1) + '</td>' +
-              '<td class="model">' +
-                '<div class="model-label">' + escapeHtml(row.model_label || row.agent_id) + '</div>' +
-                '<div class="model-sub">' + escapeHtml(row.agent_id) + '</div>' +
-              '</td>' +
-              '<td class="usdc">' + Number(row.usdc || 0).toFixed(4) + '</td>' +
-              '<td class="addr">' + escapeHtml(shortAddr(row.address)) + '</td>' +
-              '</tr>';
-          });
-          tbody.innerHTML = rows.join('') || '<tr><td colspan="4" class="empty">no data yet</td></tr>';
-        } catch (e) {
-          console.error('standings', e);
-        }
-      }
-
-      async function refreshBuyers() {
-        try {
-          const r = await fetch('/api/buyers');
-          const data = await r.json();
-          const tbody = document.getElementById('buyers');
-          const rows = (data.buyers || []).map(function (row) {
-            return '<tr>' +
-              '<td><strong>' + escapeHtml(row.agent_id) + '</strong></td>' +
-              '<td class="model">' +
-                '<div class="model-label">' + escapeHtml(row.model_label || '') + '</div>' +
-              '</td>' +
-              '<td class="usdc">' + Number(row.starting_balance_usdc || 0).toFixed(2) + '</td>' +
-              '<td class="usdc">' + Number(row.current_balance_usdc || 0).toFixed(4) + '</td>' +
-              '<td class="usdc buyer-spent">' + Number(row.total_spent_usdc || 0).toFixed(4) + '</td>' +
-              '<td class="addr">' + escapeHtml(shortAddr(row.address)) + '</td>' +
-              '</tr>';
-          });
-          tbody.innerHTML = rows.join('') || '<tr><td colspan="6" class="empty">no buyers yet</td></tr>';
-        } catch (e) {
-          console.error('buyers', e);
-        }
-      }
-
-      async function refreshTx() {
-        try {
-          const r = await fetch('/api/recent-tx');
-          const data = await r.json();
-          const container = document.getElementById('tx-feed');
-          const tx = data.tx || [];
-          if (tx.length === 0) {
-            const note = data.note ? ' (' + escapeHtml(data.note) + ')' : '';
-            container.innerHTML = '<div class="empty">no transactions yet' + note + '</div>';
-            return;
-          }
-          // Group parents with their children. Items without parent_tx_hash are
-          // top-level; items with parent_tx_hash render indented below their parent.
-          const byHash = {};
-          const tops = [];
-          tx.forEach(function (t) {
-            byHash[t.tx_hash] = t;
-            t._children = [];
-          });
-          tx.forEach(function (t) {
-            if (t.parent_tx_hash && byHash[t.parent_tx_hash]) {
-              byHash[t.parent_tx_hash]._children.push(t);
-            } else {
-              tops.push(t);
+      async function refreshStandings(){
+        try{
+          const data=await (await fetch('/api/leaderboard')).json();
+          const rows=(data.standings||[]);
+          const el=document.getElementById('standings');
+          if(!rows.length){el.innerHTML='<div class="empty">no balances yet — tournament may not have started</div>';return;}
+          const max=Math.max(...rows.map(r=>Number(r.usdc||0)),0.0001);
+          el.innerHTML=rows.map((r,i)=>{
+            const bal=Number(r.usdc||0);
+            const prev=prevBal[r.agent_id];
+            let delta='';
+            if(prev!==undefined&&Math.abs(bal-prev)>1e-9){
+              const up=bal>prev; delta='<span class="d '+(up?'up':'down')+'">'+(up?'▲':'▼')+' '+fmt(Math.abs(bal-prev))+'</span>';
             }
-          });
-          function renderTx(t, isChild) {
-            const cls = isChild ? 'tx child' : 'tx';
-            const link = 'https://basescan.org/tx/' + t.tx_hash;
-            return '<div class="' + cls + '">' +
-              '<span class="who">' + escapeHtml(t.buyer_id || '?') + '</span>' +
-              '<span class="arrow">&rarr;</span>' +
-              '<span class="who">' + escapeHtml(t.seller_id || '?') + '</span>' +
-              '<span class="cap">' + escapeHtml(t.capability || '') + '</span>' +
-              '<span class="price">' + escapeHtml(t.usdc || '') + ' USDC</span>' +
-              '<span class="hash"><a href="' + link + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(shortHash(t.tx_hash)) + '</a></span>' +
+            const flash=(prev!==undefined&&Math.abs(bal-prev)>1e-9)?' flash':'';
+            prevBal[r.agent_id]=bal;
+            return '<div class="row'+(i===0?' lead':'')+flash+'">'+
+              '<div class="rank">'+(i+1)+'</div>'+
+              '<div class="who"><div class="label">'+esc(r.model_label||r.agent_id)+'</div>'+
+                '<div class="sub mono">'+esc(r.agent_id)+'</div></div>'+
+              '<div class="bal">'+fmt(bal)+' <span class="sub">USDC</span><br>'+delta+'</div>'+
+              '<div class="barbg" style="width:'+(bal/max*100).toFixed(1)+'%"></div>'+
               '</div>';
-          }
-          const html = tops.map(function (t) {
-            return renderTx(t, false) + (t._children || []).map(function (c) { return renderTx(c, true); }).join('');
           }).join('');
-          container.innerHTML = html;
-        } catch (e) {
-          console.error('tx', e);
-        }
+        }catch(e){console.error('standings',e);}
       }
 
-      function refreshAll() {
-        refreshStandings();
-        refreshBuyers();
-        refreshTx();
+      async function refreshFlow(){
+        try{
+          const data=await (await fetch('/api/flow?limit=1')).json();
+          // header stats
+          let tot=0,cnt=0;
+          (data.edges||[]).forEach(e=>{tot+=Number(e.usdc||0);cnt+=Number(e.count||0);});
+          document.getElementById('totvol').textContent=fmt(tot)+' USDC';
+          document.getElementById('totcount').textContent=cnt;
+          drawFlow(data.edges||[]);
+        }catch(e){console.error('flow',e);}
       }
-      setInterval(refreshAll, 5000);
+
+      function drawFlow(edges){
+        const svg=document.getElementById('flow');
+        const W=600,H=320,padX=90,padY=24;
+        // nodes that appear as a source vs destination
+        const froms=[],tos=[],seenF=new Set(),seenT=new Set();
+        edges.forEach(e=>{
+          if(!seenF.has(e.from)){seenF.add(e.from);froms.push({id:e.from,label:e.from_label});}
+          if(!seenT.has(e.to)){seenT.add(e.to);tos.push({id:e.to,label:e.to_label});}
+        });
+        if(!edges.length){svg.innerHTML='<text x="300" y="160" text-anchor="middle" fill="#6b77a8" font-size="13">no on-chain transfers yet</text>';return;}
+        const yF=id=>padY+(froms.findIndex(n=>n.id===id)+0.5)*((H-2*padY)/Math.max(froms.length,1));
+        const yT=id=>padY+(tos.findIndex(n=>n.id===id)+0.5)*((H-2*padY)/Math.max(tos.length,1));
+        const maxU=Math.max(...edges.map(e=>Number(e.usdc||0)),0.0001);
+        let s='';
+        // edges
+        edges.forEach(e=>{
+          const x1=padX,x2=W-padX,y1=yF(e.from),y2=yT(e.to);
+          const col=(e.edge_kind==='demand') ? 'var(--demand)' : 'var(--recirc)';
+          const w=1+Number(e.usdc||0)/maxU*7;
+          const mx=(x1+x2)/2;
+          s+='<path d="M'+x1+','+y1+' C'+mx+','+y1+' '+mx+','+y2+' '+x2+','+y2+'" stroke="'+col+'" stroke-width="'+w.toFixed(1)+'" fill="none" opacity="0.45"/>';
+        });
+        // source nodes (left)
+        froms.forEach(n=>{
+          const y=yF(n.id);
+          s+='<circle cx="'+padX+'" cy="'+y+'" r="4" fill="#3B82F6"/>';
+          s+='<text x="'+(padX-8)+'" y="'+(y+3)+'" text-anchor="end" fill="#a39ecf" font-size="10.5" font-family="Inter Tight">'+esc(n.label)+'</text>';
+        });
+        // dest nodes (right)
+        tos.forEach(n=>{
+          const y=yT(n.id);
+          s+='<circle cx="'+(W-padX)+'" cy="'+y+'" r="4" fill="#7C3AED"/>';
+          s+='<text x="'+(W-padX+8)+'" y="'+(y+3)+'" text-anchor="start" fill="#a39ecf" font-size="10.5" font-family="Inter Tight">'+esc(n.label)+'</text>';
+        });
+        svg.innerHTML=s;
+      }
+
+      async function refreshReasoning(){
+        try{
+          const data=await (await fetch('/api/agents/latest')).json();
+          const ag=(data.agents||[]).filter(a=>a.rationale);
+          const el=document.getElementById('reasoning');
+          if(!ag.length){el.innerHTML='<div class="empty">no agent reasoning captured yet</div>';return;}
+          el.innerHTML=ag.map(a=>{
+            const id=esc(a.agent_id||a.model_label);
+            const long=(a.rationale||'').length>180;
+            const open=openReason.has(a.agent_id||a.model_label);
+            const clamp=(long&&!open)?' clamp':'';
+            return '<div class="ev"><div class="ico">🧠</div><div class="body">'+
+              '<span class="who">'+esc(a.model_label)+'</span> '+
+              (a.action?'<span class="act">'+esc(a.action)+'</span>':'')+
+              '<div class="reason'+clamp+'" data-id="'+id+'" onclick="toggleReason(this)">'+esc(a.rationale)+'</div>'+
+              (long?'<span class="rmore" onclick="toggleReason(this.parentElement.querySelector(\'.reason\'))">'+(open?'▴ less':'▾ more')+'</span>':'')+
+              '</div><span class="time">'+ago(a.ts)+'</span></div>';
+          }).join('');
+        }catch(e){console.error('reasoning',e);}
+      }
+
+      async function refreshPulse(){
+        try{
+          const data=await (await fetch('/api/activity')).json();
+          const evs=(data.events||[]);
+          const el=document.getElementById('pulse');
+          if(!evs.length){el.innerHTML='<div class="empty">no activity yet</div>';return;}
+          el.innerHTML=evs.slice(0,60).map(e=>{
+            if(e.type==='transfer'){
+              const recirc=e.edge_kind==='recirculation';
+              return '<div class="ev"><div class="ico">💸</div><div class="body">'+
+                '<span class="who">'+esc(e.from_label)+'</span> <span class="arrow">→</span> '+
+                '<span class="who">'+esc(e.to_label)+'</span> '+
+                '<span class="amt'+(recirc?' recirc':'')+'">'+esc(e.usdc)+' USDC</span><br>'+
+                '<a class="tx mono" href="https://basescan.org/tx/'+esc(e.tx_hash)+'" target="_blank" rel="noopener">'+shortHash(e.tx_hash)+'</a>'+
+                '</div><span class="time">'+ago(e.ts)+'</span></div>';
+            }
+            return '<div class="ev"><div class="ico">⚙️</div><div class="body">'+
+              '<span class="who">'+esc(e.model_label||e.agent_id)+'</span> '+
+              (e.action?'<span class="act">'+esc(e.action)+'</span>':'')+
+              (e.rationale?'<div class="reason">'+esc(e.rationale)+'</div>':'')+
+              '</div><span class="time">'+ago(e.ts)+'</span></div>';
+          }).join('');
+        }catch(e){console.error('pulse',e);}
+      }
+
+      function refreshAll(){refreshStandings();refreshFlow();refreshReasoning();refreshPulse();}
+      setInterval(refreshAll,5000);
       refreshAll();
     </script>
   </body>
