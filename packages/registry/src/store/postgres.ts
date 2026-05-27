@@ -63,11 +63,24 @@ interface ReputationRow {
 }
 
 export class PostgresStore implements RegistryStore {
-  private readonly sql: Sql;
+  // Mutable so the health watchdog can swap in a fresh pool when the live
+  // one wedges (see startWatchdog). All query methods read `this.sql` at
+  // call time, so a swap transparently routes new queries to the new pool.
+  private sql: Sql;
+  private readonly opts: PostgresStoreOptions;
+  private watchdog?: ReturnType<typeof setInterval>;
+  private consecutiveProbeFailures = 0;
+  private rebuilding = false;
 
   constructor(opts: PostgresStoreOptions) {
-    this.sql = postgres(opts.connectionString, {
-      max: opts.max ?? 5,
+    this.opts = opts;
+    this.sql = this.buildPool();
+    this.startWatchdog();
+  }
+
+  private buildPool(): Sql {
+    return postgres(this.opts.connectionString, {
+      max: this.opts.max ?? 5,
       prepare: false,
       types: { bigint: postgres.BigInt },
       // Pool resilience. Without these, postgres-js keeps connections open
@@ -82,7 +95,96 @@ export class PostgresStore implements RegistryStore {
       idle_timeout: 30,
       max_lifetime: 60 * 30,
       connect_timeout: 10,
+      // Server-side ceiling on a single query. Catches a slow-but-alive
+      // backend (lock wait, runaway scan) and returns an error that frees
+      // the connection back to the pool. NOTE: this alone does NOT rescue
+      // the wedge case below — a recycled/half-open backend never executes
+      // the query, so statement_timeout never fires. That's the watchdog's
+      // job.
+      connection: { statement_timeout: 15000 },
     });
+  }
+
+  // The idle_timeout/max_lifetime knobs above only reclaim connections that
+  // are *idle* or *connecting*. A connection wedged mid-query against the
+  // Supabase transaction pooler (pooler recycles the server-side backend,
+  // socket goes half-open, no response ever arrives, no client-side query
+  // timeout) is *busy* — it never returns to the pool, so those knobs never
+  // touch it. Five such wedges exhaust max:5 and every DB route hangs while
+  // /health stays green (outage seen 2026-05-26 AND 2026-05-27).
+  //
+  // The watchdog is what actually recovers: it probes `SELECT 1` on a short
+  // race; if the pool can't answer twice in a row it rebuilds the pool. The
+  // old pool's `end({ timeout })` force-closes the wedged sockets, which
+  // rejects their hung queries (failing those HTTP requests fast) while all
+  // new queries flow to the fresh, healthy pool. Self-heals in ~20-35s with
+  // no manual restart.
+  private startWatchdog(): void {
+    const PROBE_INTERVAL_MS = 10_000;
+    const PROBE_TIMEOUT_MS = 5_000;
+    const FAILURES_BEFORE_REBUILD = 2;
+
+    this.watchdog = setInterval(async () => {
+      if (this.rebuilding) return;
+      const ok = await this.probe(PROBE_TIMEOUT_MS);
+      if (ok) {
+        this.consecutiveProbeFailures = 0;
+        return;
+      }
+      this.consecutiveProbeFailures += 1;
+      if (this.consecutiveProbeFailures >= FAILURES_BEFORE_REBUILD) {
+        this.rebuildPool();
+      }
+    }, PROBE_INTERVAL_MS);
+    // Don't keep the event loop alive on account of the watchdog.
+    this.watchdog.unref?.();
+  }
+
+  /**
+   * Run `SELECT 1` but never hang on it: if the pool can't answer within
+   * `timeoutMs` (all connections wedged, so the probe can't even check one
+   * out) the race rejects and we report unhealthy. The abandoned probe is
+   * harmless — it gets force-closed when the pool is rebuilt.
+   */
+  private async probe(timeoutMs: number): Promise<boolean> {
+    const query = this.sql`SELECT 1`;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("db probe timeout")), timeoutMs);
+    });
+    try {
+      await Promise.race([query, timeout]);
+      return true;
+    } catch {
+      try {
+        (query as { cancel?: () => void }).cancel?.();
+      } catch {
+        /* best-effort */
+      }
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private rebuildPool(): void {
+    if (this.rebuilding) return;
+    this.rebuilding = true;
+    const old = this.sql;
+    this.sql = this.buildPool();
+    this.consecutiveProbeFailures = 0;
+    console.error(
+      "[registry] DB pool unresponsive — rebuilt connection pool to recover from wedged connections",
+    );
+    // Force-close the old pool. timeout:5 lets in-flight queries that CAN
+    // finish do so; the rest are dropped (their awaiters reject), which is
+    // exactly what unsticks the wedge.
+    void old
+      .end({ timeout: 5 })
+      .catch(() => {})
+      .finally(() => {
+        this.rebuilding = false;
+      });
   }
 
   // -------------------------------------------------------------------
@@ -574,6 +676,7 @@ export class PostgresStore implements RegistryStore {
 
   /** Close the connection pool. Call on graceful shutdown. */
   async close(): Promise<void> {
+    if (this.watchdog) clearInterval(this.watchdog);
     await this.sql.end({ timeout: 5 });
   }
 }
