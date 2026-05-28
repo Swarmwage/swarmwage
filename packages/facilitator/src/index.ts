@@ -60,6 +60,15 @@ export interface FacilitatorAppDeps {
    * wires real reserve and hourly cap values from env.
    */
   gasGuard?: GasGuard;
+  /**
+   * Set of socket addresses whose `X-Forwarded-For` / `X-Real-IP`
+   * headers the rate limiter will trust. Production deploys behind
+   * Caddy/nginx on loopback should pass `{"127.0.0.1", "::1"}`. When
+   * omitted (default empty set) the limiter keys exclusively on the raw
+   * socket address — safe against header-spoofing flood attacks but
+   * surfaces the proxy IP rather than the real client.
+   */
+  trustedProxies?: ReadonlySet<string>;
 }
 
 export function createApp(deps: FacilitatorAppDeps) {
@@ -79,6 +88,11 @@ export function createApp(deps: FacilitatorAppDeps) {
   const gasGuard =
     deps.gasGuard ??
     new GasGuard({ minReserveWei: 0n, maxPerHourWei: 0n });
+  // Snapshot trusted proxies into a closure so the per-request IP reader
+  // doesn't re-check the deps object on every call. Empty by default.
+  const trustedProxies = deps.trustedProxies ?? new Set<string>();
+  const readClientIp = (c: Parameters<typeof clientIp>[0]): string =>
+    clientIp(c, trustedProxies);
   const app = new Hono();
 
   app.use("*", honoLogger());
@@ -192,12 +206,12 @@ export function createApp(deps: FacilitatorAppDeps) {
 
   app.post(
     "/verify",
-    rateLimit(verifyIpLimiter, clientIp),
+    rateLimit(verifyIpLimiter, readClientIp),
     createVerifyHandler({ relay, store }),
   );
   app.post(
     "/settle",
-    rateLimit(settleIpLimiter, clientIp),
+    rateLimit(settleIpLimiter, readClientIp),
     createSettleHandler({
       relay,
       store,
@@ -259,10 +273,19 @@ if (isEntry) {
     minReserveWei: env.minGasReserveWei,
     maxPerHourWei: env.maxGasPerHourWei,
   });
-  app = createApp({ relay, store, gasGuard });
+  app = createApp({
+    relay,
+    store,
+    gasGuard,
+    trustedProxies: env.trustedProxies,
+  });
+  const trustedProxiesDesc =
+    env.trustedProxies.size > 0
+      ? Array.from(env.trustedProxies).join(",")
+      : "(none — XFF/X-Real-IP ignored)";
   const httpServer = serve({ fetch: app.fetch, port: env.port }, (info) => {
     process.stderr.write(
-      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind}, min_reserve_wei=${env.minGasReserveWei}, max_gas_per_hour_wei=${env.maxGasPerHourWei})\n`,
+      `swarmwage-facilitator v0.0.1 listening on http://localhost:${info.port} (network=${env.network}, gas_wallet=${relay.account.address}, store=${storeKind}, min_reserve_wei=${env.minGasReserveWei}, max_gas_per_hour_wei=${env.maxGasPerHourWei}, trusted_proxies=${trustedProxiesDesc})\n`,
     );
   });
 

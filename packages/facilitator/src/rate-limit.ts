@@ -7,8 +7,11 @@
 // bankroll at the cost of one well-formed signature per second. Two
 // dimensions are limited:
 //
-//   1. Per source IP (read from X-Forwarded-For when present, falling
-//      back to the raw socket address). Catches naive flood attacks.
+//   1. Per source IP, read from `X-Forwarded-For` / `X-Real-IP` ONLY
+//      when the request arrived on a socket whose remote address is in
+//      the configured trusted-proxy set; otherwise the raw socket
+//      address is used. Without this gate an attacker can rotate the
+//      header per request, defeating the per-IP bucket (see GH issue #7).
 //   2. Per buyer EVM address (`auth.from`). Catches the case where one
 //      buyer rotates IPs (proxy / VPN) but keeps signing with the same
 //      key — they still hit one bucket.
@@ -94,33 +97,73 @@ export class SlidingWindowLimiter {
 }
 
 /**
- * Best-effort client-IP extraction. Order:
- *   1. First entry in `X-Forwarded-For` (set by reverse proxies).
- *   2. `X-Real-IP` (set by some proxies as a single value).
- *   3. The raw remote socket address from the Node adapter, when present.
- *   4. Literal `"unknown"` — the limiter then groups every unidentifiable
- *      caller into a single bucket, which is the safer failure mode (rate
- *      limit too aggressive for misconfigured deploys, never too lax).
+ * Normalize IPv4-mapped IPv6 addresses (`::ffff:1.2.3.4`) to plain IPv4.
+ * Node's HTTP socket frequently exposes loopback as `::ffff:127.0.0.1`
+ * even when the proxy is configured as `127.0.0.1`; without normalization
+ * the trusted-proxy set check would miss and the forwarded headers would
+ * be silently ignored (rate limit too aggressive — safe, but surprising
+ * for operators).
  */
-export function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0];
-    if (first && first.trim().length > 0) {
-      return first.trim();
-    }
-  }
-  const realIp = c.req.header("x-real-ip");
-  if (realIp && realIp.trim().length > 0) {
-    return realIp.trim();
-  }
+function normalizeIp(ip: string): string {
+  if (ip.startsWith("::ffff:")) return ip.slice("::ffff:".length);
+  return ip;
+}
+
+/**
+ * Best-effort client-IP extraction.
+ *
+ * The originating socket address is the only thing we can trust — it is
+ * established by the OS kernel from the TCP handshake and cannot be
+ * forged by the client. Forwarded headers (`X-Forwarded-For`, `X-Real-IP`)
+ * are read ONLY when that socket address belongs to a configured trusted
+ * proxy. Without this gate any client can set `X-Forwarded-For: <random>`
+ * per request, defeating the per-IP bucket and turning the gas bankroll
+ * into a piñata.
+ *
+ * Order when the socket IS a trusted proxy:
+ *   1. First entry in `X-Forwarded-For`.
+ *   2. `X-Real-IP`.
+ *   3. The raw remote socket address (the proxy itself).
+ *
+ * Order when the socket is NOT a trusted proxy (or no trust list is set):
+ *   1. The raw remote socket address.
+ *   2. Literal `"unknown"` — every unidentifiable caller collapses into a
+ *      single bucket, which is the safer failure mode (rate limit too
+ *      aggressive for misconfigured deploys, never too lax).
+ *
+ * Operators put the facilitator behind a reverse proxy (Caddy, nginx) on
+ * loopback. Configure `FACILITATOR_TRUSTED_PROXIES=127.0.0.1,::1` to
+ * surface the real client IP in those deployments.
+ */
+export function clientIp(
+  c: Context,
+  trustedProxies?: ReadonlySet<string>,
+): string {
   // The Node adapter exposes the original IncomingMessage on c.env.incoming.
   // The exact shape varies across adapters; defensively narrow it.
   const env = c.env as
     | { incoming?: { socket?: { remoteAddress?: string } } }
     | undefined;
-  const remote = env?.incoming?.socket?.remoteAddress;
-  return remote && remote.length > 0 ? remote : "unknown";
+  const rawRemote = env?.incoming?.socket?.remoteAddress;
+  const remote =
+    rawRemote && rawRemote.length > 0 ? normalizeIp(rawRemote) : "unknown";
+
+  // Forwarded headers are honored only when the immediate peer is a known
+  // proxy. If no trust list is configured we never trust the headers.
+  if (trustedProxies && trustedProxies.size > 0 && trustedProxies.has(remote)) {
+    const xff = c.req.header("x-forwarded-for");
+    if (xff) {
+      const first = xff.split(",")[0];
+      if (first && first.trim().length > 0) {
+        return normalizeIp(first.trim());
+      }
+    }
+    const realIp = c.req.header("x-real-ip");
+    if (realIp && realIp.trim().length > 0) {
+      return normalizeIp(realIp.trim());
+    }
+  }
+  return remote;
 }
 
 /**
