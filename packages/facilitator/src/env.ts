@@ -35,6 +35,24 @@ const WeiAmountSchema = z
 const DEFAULT_MIN_GAS_RESERVE_WEI = 5_000_000_000_000_000n; // 0.005 ETH
 const DEFAULT_MAX_GAS_PER_HOUR_WEI = 20_000_000_000_000_000n; // 0.02 ETH
 
+// Comma-separated list of IPs whose `X-Forwarded-For` / `X-Real-IP`
+// headers the rate limiter is allowed to trust. Empty (the default)
+// means the limiter keys exclusively on the raw socket address — the
+// safe posture when the facilitator is exposed directly without a
+// reverse proxy. Production deploys behind Caddy on loopback should
+// set `FACILITATOR_TRUSTED_PROXIES=127.0.0.1,::1`. See GH issue #7.
+const TrustedProxiesSchema = z
+  .string()
+  .optional()
+  .transform((v) => {
+    if (!v) return new Set<string>();
+    const entries = v
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return new Set<string>(entries);
+  });
+
 const EnvSchema = z.object({
   PORT: z
     .string()
@@ -48,6 +66,7 @@ const EnvSchema = z.object({
   LOG_LEVEL: LogLevelSchema.default("info"),
   MIN_GAS_RESERVE_WEI: WeiAmountSchema.optional(),
   MAX_GAS_PER_HOUR_WEI: WeiAmountSchema.optional(),
+  FACILITATOR_TRUSTED_PROXIES: TrustedProxiesSchema,
 });
 
 export type FacilitatorEnv = {
@@ -59,6 +78,7 @@ export type FacilitatorEnv = {
   logLevel: LogLevel;
   minGasReserveWei: bigint;
   maxGasPerHourWei: bigint;
+  trustedProxies: ReadonlySet<string>;
 };
 
 /**
@@ -86,5 +106,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): FacilitatorEnv
     logLevel: e.LOG_LEVEL,
     minGasReserveWei: e.MIN_GAS_RESERVE_WEI ?? DEFAULT_MIN_GAS_RESERVE_WEI,
     maxGasPerHourWei: e.MAX_GAS_PER_HOUR_WEI ?? DEFAULT_MAX_GAS_PER_HOUR_WEI,
+    trustedProxies: e.FACILITATOR_TRUSTED_PROXIES,
   };
 }
