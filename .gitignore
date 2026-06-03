@@ -76,3 +76,12 @@ packages/video/
 # Repo is pnpm-only; reject accidental npm-generated lockfiles
 package-lock.json
 
+# Tournament secrets — agent wallet private keys (encrypted at rest), tick logs,
+# per-tournament settlement records before post-mortem is published. NEVER commit.
+.tournament-secrets/
+.tournament-backup/
+packages/tournament/.wallets.json.enc
+packages/tournament/.wallets.json
+packages/tournament/memory/
+packages/tournament/tick-logs/
+

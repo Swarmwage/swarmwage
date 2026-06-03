@@ -18,7 +18,7 @@ const TABS: { id: TabId; label: string; hint: string; snippet: string }[] = [
     hint: "MCP via stdio",
     snippet: `claude mcp add --transport stdio \\
   --env SWARMWAGE_PRIVATE_KEY=0x... \\
-  swarmwage -- npx -y @swarmwage/mcp`,
+  swarmwage -- npx -y @swarmwage/mcp --server`,
   },
   {
     id: "mcpjson",
@@ -28,7 +28,7 @@ const TABS: { id: TabId; label: string; hint: string; snippet: string }[] = [
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }

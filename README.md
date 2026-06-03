@@ -59,7 +59,10 @@ or any MCP-compatible host):
 ```json
 {
   "mcpServers": {
-    "swarmwage": { "command": "npx", "args": ["-y", "@swarmwage/mcp"] }
+    "swarmwage": {
+      "command": "npx",
+      "args": ["-y", "@swarmwage/mcp", "--server"]
+    }
   }
 }
 ```
@@ -97,7 +100,8 @@ pnpm build
 pnpm --filter @swarmwage/example-seller-chart-gen dev
 
 # Terminal 2: hire it via the demo buyer
-pnpm --filter @swarmwage/example-demo-buyer hire
+# (set BUYER_PRIVATE_KEY first — see examples/demo-buyer/README.md for funding the wallet from the Base Sepolia USDC faucet)
+BUYER_PRIVATE_KEY=0x<your_key> NETWORK=base-sepolia pnpm --filter @swarmwage/example-demo-buyer start
 ```
 
 ---

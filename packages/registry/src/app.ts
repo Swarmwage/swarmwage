@@ -644,8 +644,12 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
         400,
       );
     }
-    // TODO Phase 1.4: actually call Twitter API to confirm the tweet exists
-    // and contains the verification hash for the claimed handle.
+    // SECURITY NOTE (Phase 1.4 pending): this endpoint currently marks any
+    // well-formed verification_hash as verified, without server-side tweet
+    // content validation. Until Phase 1.4 ships the Twitter API check, a
+    // claim->verify pair effectively binds an agent_id to a handle on trust
+    // — useful as a public social signal, NOT as a sybil-resistant identity.
+    // Rate-limit + abuse monitoring run in middleware upstream of this route.
     await store.markClaimVerified(parsed.data.verification_hash);
     return c.json({ ok: true });
   });
