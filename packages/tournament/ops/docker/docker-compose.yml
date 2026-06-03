@@ -257,7 +257,7 @@ services:
       HTTP_PROXY: http://egress-proxy:8888
       HTTPS_PROXY: http://egress-proxy:8888
       NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
-      ALIBABA_API_KEY: "${ALIBABA_API_KEY}"
+      GOOGLE_GENERATIVE_AI_API_KEY: "${GOOGLE_GENERATIVE_AI_API_KEY}"
 
   # ----- External buyer-agents -----
   # Two Claude Haiku 4.5 buyers, $10 USDC each, generate compound-order

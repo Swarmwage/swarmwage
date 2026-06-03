@@ -56,7 +56,12 @@ export const DEFAULT_ROSTER: readonly ModelSpec[] = [
   { id: 'agent_05', label: 'Gemini 2.5 Pro',     provider: 'google',    model: 'gemini-2.5-pro',         kind: 'internal' },
   { id: 'agent_06', label: 'Grok 4.3',           provider: 'xai',       model: 'grok-4.3',               kind: 'internal' },
   { id: 'agent_07', label: 'DeepSeek R1',        provider: 'deepseek',  model: 'deepseek-reasoner',      kind: 'internal' },
-  { id: 'agent_08', label: 'Kimi K2',            provider: 'moonshot',  model: 'kimi-k2-0905',           kind: 'internal' },
+  // agent_08 model 2026-05-27: kimi-k2-0905 was withdrawn (404); the current
+  // Kimi models kimi-k2.5 / kimi-k2.6 are *thinking* models that break the
+  // AI-SDK multi-step tool flow ("reasoning_content missing in assistant tool
+  // call message"). moonshot-v1-32k is the live non-thinking Moonshot model
+  // that handles multi-step function calling cleanly. Honest relabel.
+  { id: 'agent_08', label: 'Moonshot v1',        provider: 'moonshot',  model: 'moonshot-v1-32k',        kind: 'internal' },
   { id: 'agent_09', label: 'Mistral Large 2',    provider: 'mistral',   model: 'mistral-large-latest',   kind: 'internal' },
   // agent_10 swap 2026-05-24: Alibaba DashScope account verification stalled
   // (verification email never arrived). Substituted with Gemini 2.5 Flash —

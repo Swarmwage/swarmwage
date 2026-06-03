@@ -26,7 +26,7 @@ export const ROSTER: AgentMeta[] = [
   { agent_id: 'agent_05', label: 'Gemini 2.5 Pro',    provider: 'google',    kind: 'internal', address: '0x86429bd38038be462e4093667a43b99c24dd5851' },
   { agent_id: 'agent_06', label: 'Grok 4.3',          provider: 'xai',       kind: 'internal', address: '0xb962377acf020f2980d6c76dc73b4cd48200118b' },
   { agent_id: 'agent_07', label: 'DeepSeek R1',       provider: 'deepseek',  kind: 'internal', address: '0xf06d95adb90a555a5136c9b153e38e11cb3b3cc4' },
-  { agent_id: 'agent_08', label: 'Kimi K2',           provider: 'moonshot',  kind: 'internal', address: '0xd357edd3b08d9028e59f18d91dfadb80f8745518' },
+  { agent_id: 'agent_08', label: 'Moonshot v1',       provider: 'moonshot',  kind: 'internal', address: '0xd357edd3b08d9028e59f18d91dfadb80f8745518' },
   { agent_id: 'agent_09', label: 'Mistral Large 2',   provider: 'mistral',   kind: 'internal', address: '0xb37ccabc3b1b4e8e10253d3392673cdbb204111b' },
   { agent_id: 'agent_10', label: 'Gemini 2.5 Flash',  provider: 'google',    kind: 'internal', address: '0xfb5c3827bab3f58482e5fde414d14aac387622ef' },
   { agent_id: 'buyer_01', label: 'Claude Haiku 4.5',  provider: 'anthropic', kind: 'buyer',    address: '0x6dd1777235e54d07b83b542f7624a223397e2606' },

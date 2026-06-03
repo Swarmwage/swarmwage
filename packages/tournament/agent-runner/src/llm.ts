@@ -62,7 +62,12 @@ export function resolveLanguageModel(spec: ModelSpec) {
     case 'anthropic':
       return anthropic(spec.model);
     case 'openai':
-      return openai(spec.model);
+      // structuredOutputs:false disables OpenAI strict function-schema mode.
+      // Strict mode rejects our tool schemas (optional fields, z.record) with
+      // "'required' must include every key" / "additionalProperties needs a
+      // type", which silently killed every GPT-5 / GPT-5-mini tick. The other
+      // providers don't enforce strict, so this is OpenAI-only.
+      return openai(spec.model, { structuredOutputs: false });
     case 'google':
       return google(spec.model);
     case 'mistral':

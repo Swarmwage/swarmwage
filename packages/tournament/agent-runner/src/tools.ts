@@ -35,10 +35,18 @@ export interface ToolContext {
   maxSingleHireUsdc: string;
 }
 
-async function getJson<T = unknown>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`${url} → ${res.status}`);
-  return (await res.json()) as T;
+// Never throws: a thrown tool error becomes AI_ToolExecutionError, which aborts
+// the ENTIRE generateText tick. (DeepSeek deterministically probed
+// list_capabilities → /v1/capabilities 404 → every one of its ticks died.)
+// Returning {error} lets the model see the failure and recover the same tick.
+async function getJson<T = unknown>(url: string): Promise<T | { error: string }> {
+  try {
+    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    if (!res.ok) return { error: `${url} → ${res.status}` };
+    return (await res.json()) as T;
+  } catch (e) {
+    return { error: String(e) };
+  }
 }
 
 export function buildTools(ctx: ToolContext) {
@@ -51,13 +59,18 @@ export function buildTools(ctx: ToolContext) {
         max_price_usdc: z.string().optional().describe('Filter to listings at or below this price, e.g. "0.50".'),
         max_latency_ms: z.number().optional(),
       }),
-      execute: async ({ capability, max_price_usdc, max_latency_ms }) =>
-        searchAgents({
-          registryUrl: ctx.registryUrl,
-          capability,
-          max_price_usdc,
-          max_latency_ms,
-        }),
+      execute: async ({ capability, max_price_usdc, max_latency_ms }) => {
+        try {
+          return await searchAgents({
+            registryUrl: ctx.registryUrl,
+            capability,
+            max_price_usdc,
+            max_latency_ms,
+          });
+        } catch (e) {
+          return { error: String(e) };
+        }
+      },
     }),
 
     list_capabilities: tool({
@@ -149,16 +162,26 @@ export function buildTools(ctx: ToolContext) {
     list_my_listings: tool({
       description: 'Show your currently active listings.',
       parameters: z.object({}),
-      execute: async () =>
-        listMyListings({ registryUrl: ctx.registryUrl, agentId: ctx.agentAddress }),
+      execute: async () => {
+        try {
+          return await listMyListings({ registryUrl: ctx.registryUrl, agentId: ctx.agentAddress });
+        } catch (e) {
+          return { error: String(e) };
+        }
+      },
     }),
 
     check_my_balance: tool({
       description: 'Your current USDC balance on Base mainnet.',
       parameters: z.object({}),
       execute: async () => {
-        const res = await fetch(`${ctx.walletSvcUrl}/wallets/${ctx.agentId}/balance`);
-        return res.json();
+        try {
+          const res = await fetch(`${ctx.walletSvcUrl}/wallets/${ctx.agentId}/balance`);
+          if (!res.ok) return { error: `wallet-svc balance → ${res.status}` };
+          return await res.json();
+        } catch (e) {
+          return { error: String(e) };
+        }
       },
     }),
 
@@ -241,10 +264,14 @@ export function buildTools(ctx: ToolContext) {
       description: 'Read your private memory (last 100 notes).',
       parameters: z.object({}),
       execute: async () => {
-        const path = `${ctx.memoryDir}/notes.jsonl`;
-        if (!existsSync(path)) return { notes: [] };
-        const lines = (await readFile(path, 'utf-8')).trim().split('\n').slice(-100);
-        return { notes: lines.map((l) => JSON.parse(l)) };
+        try {
+          const path = `${ctx.memoryDir}/notes.jsonl`;
+          if (!existsSync(path)) return { notes: [] };
+          const lines = (await readFile(path, 'utf-8')).trim().split('\n').slice(-100);
+          return { notes: lines.flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) };
+        } catch (e) {
+          return { error: String(e) };
+        }
       },
     }),
   };

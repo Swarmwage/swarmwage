@@ -15,8 +15,9 @@
 // ≥ the target USDC.
 //
 // Environment:
-//   OPS_WALLET_PRIVATE_KEY   funding wallet (must have N*5 USDC + enough ETH for its own N txs)
-//   PER_AGENT_USDC           default "5" (will be converted to 6-decimal base units)
+//   OPS_WALLET_PRIVATE_KEY   funding wallet (must have N*5 USDC + buyer*10 USDC + enough ETH)
+//   PER_AGENT_USDC           default "5"  (applied to wallets with id `agent_*`)
+//   PER_BUYER_USDC           default "10" (applied to wallets with id `buyer_*`)
 //   WALLETS_PUBLIC_PATH      default ../.tournament-secrets/wallets.public.json
 //   BASE_RPC_URL             default https://mainnet.base.org
 //   DRY_RUN                  if "1", print plan but send no transactions
@@ -46,6 +47,7 @@ if (!OPS_KEY) {
 }
 
 const PER_AGENT_USDC = process.env.PER_AGENT_USDC ?? '5';
+const PER_BUYER_USDC = process.env.PER_BUYER_USDC ?? '10';
 const FUND_ETH_DEBUG = process.env.FUND_ETH_DEBUG === '1';
 const ETH_PER_AGENT_WEI = FUND_ETH_DEBUG
   ? BigInt(process.env.ETH_PER_AGENT_WEI ?? '1500000000000000')
@@ -55,7 +57,12 @@ const PUBLIC_PATH = process.env.WALLETS_PUBLIC_PATH ?? resolve(process.cwd(), '.
 const RPC = process.env.BASE_RPC_URL ?? 'https://mainnet.base.org';
 
 const USDC_BASE: Address = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
-const targetUsdcAtomic = parseUnits(PER_AGENT_USDC, 6);
+const agentTargetAtomic = parseUnits(PER_AGENT_USDC, 6);
+const buyerTargetAtomic = parseUnits(PER_BUYER_USDC, 6);
+
+function targetFor(agentId: string): bigint {
+  return agentId.startsWith('buyer_') ? buyerTargetAtomic : agentTargetAtomic;
+}
 
 const opsAccount = privateKeyToAccount(OPS_KEY);
 const publicClient = createPublicClient({ chain: base, transport: http(RPC) });
@@ -85,7 +92,8 @@ type AgentPub = { agent_id: string; address: Address };
 const { wallets }: { wallets: AgentPub[] } = JSON.parse(readFileSync(PUBLIC_PATH, 'utf-8'));
 
 console.log(`Funding ${wallets.length} agents from ${opsAccount.address}`);
-console.log(`  per-agent USDC: ${PER_AGENT_USDC} (${targetUsdcAtomic.toString()} atomic)`);
+console.log(`  per-agent USDC: ${PER_AGENT_USDC} (${agentTargetAtomic.toString()} atomic) — applied to agent_* ids`);
+console.log(`  per-buyer USDC: ${PER_BUYER_USDC} (${buyerTargetAtomic.toString()} atomic) — applied to buyer_* ids`);
 if (FUND_ETH_DEBUG) {
   console.log(`  per-agent ETH:  ${ETH_PER_AGENT_WEI.toString()} wei  (FUND_ETH_DEBUG=1)`);
 } else {
@@ -94,18 +102,18 @@ if (FUND_ETH_DEBUG) {
 console.log(`  dry-run:        ${DRY_RUN}`);
 console.log('');
 
-async function ensureUsdc(to: Address) {
+async function ensureUsdc(to: Address, target: bigint) {
   const bal = (await publicClient.readContract({
     address: USDC_BASE,
     abi: usdcAbi,
     functionName: 'balanceOf',
     args: [to],
   })) as bigint;
-  if (bal >= targetUsdcAtomic) {
-    console.log(`  USDC ${to}: already has ${bal.toString()} atomic — skip`);
+  if (bal >= target) {
+    console.log(`  USDC ${to}: already has ${bal.toString()} atomic (>= target ${target}) — skip`);
     return null;
   }
-  const need = targetUsdcAtomic - bal;
+  const need = target - bal;
   if (DRY_RUN) {
     console.log(`  USDC ${to}: would send ${need.toString()} atomic`);
     return null;
@@ -116,7 +124,9 @@ async function ensureUsdc(to: Address) {
     functionName: 'transfer',
     args: [to, need],
   });
-  console.log(`  USDC ${to}: tx ${hash}`);
+  console.log(`  USDC ${to}: tx ${hash} — waiting for confirmation…`);
+  const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 });
+  console.log(`  USDC ${to}: confirmed in block ${receipt.blockNumber} (${receipt.status})`);
   return hash;
 }
 
@@ -136,11 +146,17 @@ async function ensureEth(to: Address) {
   return hash;
 }
 
+const DELAY_MS = Number(process.env.FUND_DELAY_MS ?? '700');
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 (async () => {
   for (const w of wallets) {
-    console.log(`Agent ${w.agent_id} (${w.address})`);
+    const target = targetFor(w.agent_id);
+    const targetLabel = w.agent_id.startsWith('buyer_') ? PER_BUYER_USDC : PER_AGENT_USDC;
+    console.log(`Agent ${w.agent_id} (${w.address}) — target $${targetLabel}`);
     if (FUND_ETH_DEBUG) await ensureEth(w.address);
-    await ensureUsdc(w.address);
+    await ensureUsdc(w.address, target);
+    if (DELAY_MS > 0) await sleep(DELAY_MS);
   }
   console.log('');
   console.log(DRY_RUN ? 'Dry-run complete — no transactions sent.' : 'Funding complete.');

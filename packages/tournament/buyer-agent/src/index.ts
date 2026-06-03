@@ -25,6 +25,7 @@ import {
   pickSellerForTemplate,
 } from './publish.js';
 import type { BuyerEnv, BuyerState, RecentHire } from './types.js';
+import { emitTick } from './emit-tick.js';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -190,6 +191,13 @@ function appendTickLog(env: BuyerEnv, record: unknown): void {
         rationale: action.rationale,
       });
       console.log(`[${env.buyerId}] tick ${tickN} WAIT — ${action.rationale}`);
+      emitTick({
+        agent_id: env.buyerId,
+        tick: tickN,
+        action: 'wait',
+        rationale: action.rationale,
+        detail: { balance_usdc: balanceUsdc },
+      });
       await sleep(remaining(env.tickIntervalMs, tickStart));
       continue;
     }
@@ -265,6 +273,18 @@ function appendTickLog(env: BuyerEnv, record: unknown): void {
       console.log(
         `[${env.buyerId}] tick ${tickN} HIRE ${action.template} seller=${seller.agent_id} price=${seller.price_usdc} cap=${action.max_price_usdc}`,
       );
+      emitTick({
+        agent_id: env.buyerId,
+        tick: tickN,
+        action: 'hire',
+        rationale: action.rationale,
+        detail: {
+          template: action.template,
+          topic: action.topic,
+          seller_id: seller.agent_id,
+          price_usdc: seller.price_usdc,
+        },
+      });
     } catch (e) {
       const fail: RecentHire = {
         ts: new Date().toISOString(),

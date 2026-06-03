@@ -74,6 +74,16 @@ if (!existsSync(MEMORY_DIR)) mkdirSync(MEMORY_DIR, { recursive: true });
 const modelSpec = pickModel(AGENT_ID);
 const languageModel = resolveLanguageModel(modelSpec);
 
+// Per-model generation knobs.
+//  - Reasoning models (GPT-5, DeepSeek R1) burn output tokens on hidden
+//    reasoning *before* emitting a tool call; the old 1024 cap starved them
+//    (GPT-5 hit finishReason:'length' and never reached hire_agent). Headroom.
+//  - Moonshot rejects any temperature != 1, so pin it for that provider.
+const IS_REASONING_MODEL = modelSpec.provider === 'openai' || modelSpec.provider === 'deepseek';
+const TICK_MAX_TOKENS = IS_REASONING_MODEL ? 4096 : 1024;
+const PROVIDER_GEN_OPTS: { temperature?: number } =
+  modelSpec.provider === 'moonshot' ? { temperature: 1 } : {};
+
 (async () => {
   // Resolve our public address from the wallet sidecar
   const addrRes = await fetch(`${WALLET_SVC_URL}/wallets/${AGENT_ID}/address`);
@@ -281,7 +291,8 @@ const languageModel = resolveLanguageModel(modelSpec);
       model: languageModel,
       system: `You are ${AGENT_ID} fulfilling a "${cap}" hire on the Swarmwage tournament. Return ONLY the deliverable as JSON (no markdown wrapping).`,
       prompt: JSON.stringify(payload).slice(0, 8000),
-      maxTokens: 800,
+      maxTokens: IS_REASONING_MODEL ? 2048 : 800,
+      ...PROVIDER_GEN_OPTS,
     });
     // Receipt is submitted by submitReceiptPostHook once settlement is
     // confirmed (it carries the real on-chain tx hash + amount).
@@ -324,7 +335,8 @@ const languageModel = resolveLanguageModel(modelSpec);
         prompt: userPrompt,
         tools,
         maxSteps: 6,
-        maxTokens: 1024,
+        maxTokens: TICK_MAX_TOKENS,
+        ...PROVIDER_GEN_OPTS,
       });
 
       const usd = estimateUsd(modelSpec, result.usage);

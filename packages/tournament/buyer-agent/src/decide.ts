@@ -26,7 +26,7 @@ const MODEL_ID = 'claude-haiku-4-5';
 const HAIKU_IN_PER_TOKEN = 1.0 / 1_000_000;
 const HAIKU_OUT_PER_TOKEN = 5.0 / 1_000_000;
 
-const ActionSchema = z.discriminatedUnion('type', [
+const ActionUnion = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('hire'),
     template: z.string().describe('Compound template name, e.g. compound.research-brief'),
@@ -43,6 +43,15 @@ const ActionSchema = z.discriminatedUnion('type', [
     rationale: z.string().describe('1 sentence explaining why no order this tick.'),
   }),
 ]);
+
+// Anthropic's tool input_schema MUST be a top-level object ("type":"object").
+// A bare discriminated union serialises to {anyOf:[...]} with no top-level
+// "type", which the API rejects: "tools.0.custom.input_schema.type: Field
+// required". Wrapping the union in an object makes generateObject emit a valid
+// object schema; we read back result.object.action.
+const ResponseSchema = z.object({
+  action: ActionUnion.describe('The single action to take this tick.'),
+});
 
 export interface DecideResult {
   action: DecisionAction;
@@ -132,7 +141,7 @@ export async function decide(args: {
 
   const result = await generateObject({
     model,
-    schema: ActionSchema,
+    schema: ResponseSchema,
     system,
     prompt,
     maxTokens: 400,
@@ -143,9 +152,9 @@ export async function decide(args: {
     (usage?.promptTokens ?? 0) * HAIKU_IN_PER_TOKEN +
     (usage?.completionTokens ?? 0) * HAIKU_OUT_PER_TOKEN;
 
-  let action: DecisionAction = result.object;
+  let action: DecisionAction = result.object.action;
   action = validateAndClamp(action);
-  return { action, usdSpent: usd, raw: JSON.stringify(result.object) };
+  return { action, usdSpent: usd, raw: JSON.stringify(result.object.action) };
 }
 
 /**
