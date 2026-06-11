@@ -504,7 +504,15 @@ async function settleAuthorization(
           s,
         ],
       });
-    } catch {
+    } catch (err) {
+      // Surface the broadcast failure reason. Without this line a settle
+      // outage (RPC down, nonce gap, malformed tx) shows up only as
+      // anonymous unexpected_settle_error responses — undebuggable from
+      // the route log alone.
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `facilitator.settle.broadcast_failed from=${auth.from} err=${JSON.stringify(msg)}\n`,
+      );
       return {
         response: buildSettleFailure(
           network,
