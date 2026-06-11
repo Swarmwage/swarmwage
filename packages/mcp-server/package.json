@@ -18,6 +18,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/__test__/*.test.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"
   },
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.4"
   },
   "engines": {
