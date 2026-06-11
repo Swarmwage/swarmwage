@@ -330,6 +330,16 @@ export class AgentClient {
       throw err;
     }
 
+    // Budget accounting happens as soon as the response arrives: the x402
+    // payment settled on-chain during the transport's 402 retry, so the
+    // spend is real even if the protocol or verification checks below throw.
+    // Recording after the verification gate (as before) let a seller that
+    // systematically fails verification drain the wallet past the
+    // operator-authorized budget.
+    if (this.budgetState && response.receipt?.price_paid_usdc) {
+      recordSpend(this.budgetState, response.receipt.price_paid_usdc);
+    }
+
     if (response.protocol !== PROTOCOL_VERSION) {
       throw new InvalidProtocolVersionError(response.protocol, PROTOCOL_VERSION);
     }
@@ -353,8 +363,6 @@ export class AgentClient {
         verification.checks.filter((c) => !c.passed),
       );
     }
-
-    if (this.budgetState) recordSpend(this.budgetState, response.receipt.price_paid_usdc);
 
     this.telemetry.send({
       kind: "hire_complete",
@@ -382,11 +390,30 @@ export class AgentClient {
         "Async hire requires an explicit agent_id (use search() first)",
       );
     }
-    const rep = await this.getReputation(req.agent_id);
-    const endpoint = (rep as unknown as { endpoint?: string }).endpoint;
-    if (!endpoint) {
-      throw new HireRefusedError(`No endpoint for agent ${req.agent_id}`);
+    // Resolve the seller endpoint from their active listings. The reputation
+    // response carries no endpoint — only listings do — so we look up the
+    // listing that matches the requested capability.
+    const { listings } = await this.transport.json<{ listings: Listing[] }>(
+      `/v1/agents/${req.agent_id}/listings`,
+      { method: "GET" },
+    );
+    const listing = listings.find((l) => l.capability === req.capability);
+    if (!listing) {
+      throw new HireRefusedError(
+        `Agent ${req.agent_id} has no listing for ${req.capability}`,
+      );
     }
+    const endpoint = listing.endpoint;
+
+    // Same anti-hijack + price-cap posture as the sync hire() path: the
+    // payment selector refuses to sign unless the seller's 402 challenge
+    // pays out to the agent_id we resolved the listing from.
+    const paidFetchForAsyncHire = wrapFetchWithPayment(
+      globalThis.fetch,
+      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
+      usdcStringToAtomic(req.max_price_usdc),
+      makeAntiHijackSelector(req.agent_id, this.network, this.facilitatorUrl),
+    ) as unknown as typeof fetch;
 
     return this.transport.json<AsyncHireResponse>(`${endpoint}/hire`, {
       method: "POST",
@@ -402,6 +429,7 @@ export class AgentClient {
         nonce: req.nonce ?? crypto.randomUUID(),
       }),
       paid: true,
+      paidFetch: paidFetchForAsyncHire,
     });
   }
 
