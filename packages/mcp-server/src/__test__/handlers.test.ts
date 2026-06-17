@@ -265,6 +265,7 @@ describe("tool catalog", () => {
       "list_my_listings",
       "get_my_receipts",
       "list_capabilities",
+      "call_x402_service",
     ];
     for (const name of dispatched) {
       assert.ok(advertised.has(name), `tool '${name}' missing from catalog`);

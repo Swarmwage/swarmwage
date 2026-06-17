@@ -37,6 +37,8 @@ import {
   type HireResponse,
   type AsyncHireResponse,
   type JobStatus,
+  type PayX402Request,
+  type PayX402Response,
   type Listing,
   type RatingRequest,
   type Reputation,
@@ -59,6 +61,17 @@ function usdcStringToAtomic(amount: string): bigint {
   const frac = (fracRaw + "000000").slice(0, 6);
   const combined = `${intPart}${frac}`.replace(/^0+(?=\d)/, "");
   return BigInt(combined === "" ? "0" : combined);
+}
+
+// Inverse of usdcStringToAtomic: atomic USDC units (6 decimals) -> decimal
+// string. "0.020000" trailing zeros are trimmed ("0.02"); a whole-dollar
+// amount renders without a fractional part ("1"). Used to book the actual
+// amount paid on a raw x402 call against the operator budget.
+function atomicToUsdcString(atomic: bigint): string {
+  const s = atomic.toString().padStart(7, "0");
+  const intPart = s.slice(0, -6).replace(/^0+(?=\d)/, "");
+  const frac = s.slice(-6).replace(/0+$/, "");
+  return frac ? `${intPart}.${frac}` : intPart;
 }
 
 // Used for the default (non-hire) paidFetch that the AgentClient instantiates
@@ -374,6 +387,126 @@ export class AgentClient {
     });
 
     return response;
+  }
+
+  // -----------------------------------------------------------------------
+  // Raw x402 call (external endpoints, outside the Swarmwage hire envelope)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Call an arbitrary x402-enabled endpoint and pay for it from this agent's
+   * wallet. Unlike `hire()`, this makes NO assumption that the target is a
+   * Swarmwage-protocol seller: it sends the service's own native request shape
+   * to the URL as-is and returns the raw response, handling the x402 402 →
+   * signed-authorization → retry dance transparently.
+   *
+   * Safety posture:
+   *  - Payment is capped at `max_price_usdc` (default "1.00"); the SDK refuses
+   *    to sign above the cap.
+   *  - Selection is forced onto the configured network, so a multi-network
+   *    endpoint can't trick the wallet into paying on a chain where it holds
+   *    other funds.
+   *  - The Swarmwage facilitator is advertised (header + requirement hint) so
+   *    the call still flows through our gas-relay when the endpoint honours it.
+   *
+   * There is NO seller-identity (anti-hijack) check: the endpoint is an
+   * external third party, not a registered Swarmwage agent. The price cap is
+   * the safety bound. Budget (when loaded) is debited by the amount actually
+   * required by the selected 402 challenge.
+   */
+  async payX402(req: PayX402Request): Promise<PayX402Response> {
+    const maxPrice = req.max_price_usdc ?? "1.00";
+    if (this.budgetState) assertCanSpend(this.budgetState, maxPrice);
+
+    // Capture the amount the selected requirement demands so budget accounting
+    // reflects what was actually paid (not the cap). The selector runs only
+    // when the endpoint issues a 402 — a free/already-paid 200 leaves this
+    // undefined and books no spend.
+    let paidAtomic: bigint | undefined;
+    const selector: PaymentRequirementsSelector = (reqs, _network, scheme) => {
+      const selected = selectPaymentRequirements(reqs, this.network, scheme);
+      try {
+        paidAtomic = BigInt(selected.maxAmountRequired);
+      } catch {
+        /* best-effort: leave undefined */
+      }
+      if (this.facilitatorUrl) {
+        selected.extra = {
+          ...(selected.extra ?? {}),
+          swarmwageFacilitatorUrl: this.facilitatorUrl,
+        };
+      }
+      return selected;
+    };
+
+    const paidFetch = wrapFetchWithPayment(
+      globalThis.fetch,
+      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
+      usdcStringToAtomic(maxPrice),
+      selector,
+    ) as unknown as typeof fetch;
+
+    const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
+    this.telemetry.send({ kind: "x402_call", url: req.url });
+
+    const t0 = Date.now();
+    let status = 0;
+    let txHash: string | undefined;
+    let data: unknown;
+    try {
+      data = await this.transport.json<unknown>(req.url, {
+        method,
+        body: req.body !== undefined ? JSON.stringify(req.body) : undefined,
+        headers: req.headers,
+        paid: true,
+        paidFetch,
+        onResponse: (res) => {
+          status = res.status;
+          txHash = decodeX402SettlementTxHash(res);
+        },
+      });
+    } catch (err) {
+      this.telemetry.send({
+        kind: "x402_call_failed",
+        url: req.url,
+        reason: (err as Error).message,
+      });
+      // A second 402 after the EIP-3009 retry means settlement failed —
+      // surface it as InsufficientFunds so the caller can guide funding.
+      if (err instanceof TransportError && err.status === 402) {
+        throw new InsufficientFundsError(
+          this.agentId,
+          maxPrice,
+          this.network,
+          undefined,
+          err,
+        );
+      }
+      throw err;
+    }
+
+    const amountPaid =
+      paidAtomic !== undefined ? atomicToUsdcString(paidAtomic) : undefined;
+    if (this.budgetState && amountPaid) {
+      recordSpend(this.budgetState, amountPaid);
+    }
+
+    this.telemetry.send({
+      kind: "x402_call_complete",
+      url: req.url,
+      amount_usdc: amountPaid ?? null,
+      latency_ms: Date.now() - t0,
+      status,
+    });
+
+    return {
+      url: req.url,
+      status,
+      data,
+      tx_hash: txHash as PayX402Response["tx_hash"],
+      amount_paid_usdc: amountPaid,
+      latency_ms: Date.now() - t0,
+    };
   }
 
   // -----------------------------------------------------------------------

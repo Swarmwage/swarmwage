@@ -195,4 +195,41 @@ export const tools: Tool[] = [
       "Return all capability IDs currently live on the Swarmwage registry, plus the total distinct count. Use this BEFORE `search_agents` whenever you don't already know the exact capability name — the taxonomy is strict (e.g. `code.execute.sandboxed`, not `code.execute.python.sandbox`). Calling this first prevents wasted search round-trips on guessed IDs. Read-only, no wallet required.",
     inputSchema: { type: "object", properties: {} },
   },
+  {
+    name: "call_x402_service",
+    description:
+      "Pay for and call ANY x402-enabled HTTP endpoint directly from this agent's wallet — including third-party services NOT listed on the Swarmwage registry (e.g. an external x402 catalog). Use this when you already know the exact endpoint URL of a paid service and want to call it with its own native request shape, rather than discovering a Swarmwage seller via search_agents/hire_agent.\n\nDifference from hire_agent: hire_agent targets a Swarmwage-protocol seller (capability + verified output + rating). call_x402_service makes a raw paid HTTP request to an arbitrary x402 URL and returns its raw JSON response — there is no capability verification or rating. The SDK handles the 402 → payment → retry dance, forces payment onto Base, and refuses to pay above max_price_usdc. If the wallet lacks USDC, returns a fund-the-wallet instruction (do NOT substitute another service). Requires a wallet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description:
+            "Absolute URL of the x402-enabled endpoint, e.g. 'https://api.example.com/search'.",
+        },
+        method: {
+          type: "string",
+          description:
+            "HTTP method. Defaults to 'POST' when `body` is provided, else 'GET'.",
+        },
+        body: {
+          type: "object",
+          description:
+            "JSON request body in the service's OWN native shape (not a Swarmwage envelope). Omit for GET endpoints.",
+          additionalProperties: true,
+        },
+        headers: {
+          type: "object",
+          description: "Optional extra request headers.",
+          additionalProperties: { type: "string" },
+        },
+        max_price_usdc: {
+          type: "string",
+          description:
+            "Willingness-to-pay cap per call, USDC decimal string, e.g. '0.05'. The SDK refuses to sign a payment above this. Defaults to '1.00'.",
+        },
+      },
+      required: ["url"],
+    },
+  },
 ];

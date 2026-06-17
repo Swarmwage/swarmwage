@@ -233,6 +233,26 @@ export function createToolHandler(deps: ToolHandlerDeps) {
           return ok({ count: receipts.length, receipts });
         }
 
+        case "call_x402_service": {
+          if (!client) return walletRequired("call_x402_service");
+          const response = await client.payX402({
+            url: String(args.url),
+            method: args.method as string | undefined,
+            body: args.body,
+            headers: args.headers as Record<string, string> | undefined,
+            max_price_usdc: args.max_price_usdc as string | undefined,
+          });
+          return ok({
+            url: response.url,
+            status: response.status,
+            data: response.data,
+            tx_hash: response.tx_hash,
+            amount_paid_usdc: response.amount_paid_usdc,
+            latency_ms: response.latency_ms,
+            remaining_budget_usdc: client.remainingBudget(),
+          });
+        }
+
         default:
           return errResult(`Unknown tool: ${name}`);
       }

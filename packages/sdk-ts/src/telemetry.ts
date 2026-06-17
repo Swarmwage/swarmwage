@@ -23,6 +23,15 @@ export interface TelemetryEvent {
         all_passed: boolean;
       }
     | { kind: "hire_failed"; capability: CapabilityId; reason: string }
+    | { kind: "x402_call"; url: string }
+    | {
+        kind: "x402_call_complete";
+        url: string;
+        amount_usdc: string | null;
+        latency_ms: number;
+        status: number;
+      }
+    | { kind: "x402_call_failed"; url: string; reason: string }
     | { kind: "rate"; stars: number };
 }
 

@@ -195,6 +195,45 @@ export type JobStatus =
   | { status: "failed"; job_id: string; error: string };
 
 // -------------------------------------------------------------------------
+// Raw x402 call — pay any external x402 endpoint, outside the Swarmwage hire
+// envelope. Lets a buyer call third-party x402 services (e.g. a public x402
+// catalog) directly: the SDK handles the 402 payment dance but sends the
+// service's own native request shape and returns its raw response. There is
+// no Swarmwage seller-identity check — the price cap is the safety bound.
+// -------------------------------------------------------------------------
+
+export interface PayX402Request {
+  /** Absolute URL of the x402-enabled endpoint to call. */
+  url: string;
+  /** HTTP method. Defaults to "POST" when `body` is set, else "GET". */
+  method?: string;
+  /** JSON request body in the service's native shape (NOT a Swarmwage envelope). */
+  body?: unknown;
+  /** Extra request headers merged onto the request. */
+  headers?: Record<string, string>;
+  /**
+   * Willingness-to-pay cap in USDC (decimal string, e.g. "0.05"). The SDK
+   * refuses to sign a payment exceeding this. Defaults to "1.00".
+   */
+  max_price_usdc?: UsdcAmount;
+}
+
+export interface PayX402Response {
+  /** The URL that was called. */
+  url: string;
+  /** HTTP status of the final (post-payment) response. */
+  status: number;
+  /** The service's raw response body (parsed as JSON). */
+  data: unknown;
+  /** x402 settlement transaction hash, when the endpoint reported one. */
+  tx_hash?: Hex;
+  /** Amount paid in USDC, from the selected 402 requirement. Omitted when no payment was required. */
+  amount_paid_usdc?: UsdcAmount;
+  /** End-to-end latency in milliseconds. */
+  latency_ms: number;
+}
+
+// -------------------------------------------------------------------------
 // Rating
 // -------------------------------------------------------------------------
 

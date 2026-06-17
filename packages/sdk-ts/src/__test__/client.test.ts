@@ -277,3 +277,62 @@ describe("hire() budget accounting", () => {
     assert.equal(client.remainingBudget(), "0.95");
   });
 });
+
+describe("payX402 (raw external x402 call)", () => {
+  const EXT_URL = "https://api.exa.example/search";
+
+  test("POSTs the native body to the external URL and returns the raw response", async (t) => {
+    const { calls, restore } = mockFetch([
+      {
+        match: (url, method) => url === EXT_URL && method === "POST",
+        respond: () => jsonResponse({ results: [{ title: "hit" }] }),
+      },
+    ]);
+    t.after(restore);
+
+    const client = makeClient();
+    const res = await client.payX402({
+      url: EXT_URL,
+      body: { query: "agents" },
+      max_price_usdc: "0.05",
+    });
+
+    assert.equal(res.url, EXT_URL);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.data, { results: [{ title: "hit" }] });
+
+    const call = calls.find((c) => c.url === EXT_URL);
+    assert.ok(call, "payX402 must call the external URL");
+    assert.equal(call.method, "POST");
+    assert.deepEqual(call.body, { query: "agents" });
+  });
+
+  test("defaults to GET when no body is provided", async (t) => {
+    const { calls, restore } = mockFetch([
+      {
+        match: (url, method) => url === EXT_URL && method === "GET",
+        respond: () => jsonResponse({ ok: true }),
+      },
+    ]);
+    t.after(restore);
+
+    const client = makeClient();
+    await client.payX402({ url: EXT_URL });
+    assert.equal(calls.find((c) => c.url === EXT_URL)?.method, "GET");
+  });
+
+  test("books no spend when the endpoint answers 200 without a 402 challenge", async (t) => {
+    const { restore } = mockFetch([
+      {
+        match: (url) => url === EXT_URL,
+        respond: () => jsonResponse({ ok: true }),
+      },
+    ]);
+    t.after(restore);
+
+    const client = makeClient({ budget: makeBudget("1.00") });
+    const res = await client.payX402({ url: EXT_URL, body: {} });
+    assert.equal(res.amount_paid_usdc, undefined);
+    assert.equal(client.remainingBudget(), "1.00");
+  });
+});

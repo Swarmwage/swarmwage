@@ -55,6 +55,8 @@ export {
   type HireResponse,
   type AsyncHireResponse,
   type JobStatus,
+  type PayX402Request,
+  type PayX402Response,
   type Receipt,
   type RatingRequest,
   type Stars,
