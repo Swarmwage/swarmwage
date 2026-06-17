@@ -12,6 +12,7 @@
 import type { Address, Log } from "viem";
 
 import type { PublicClientLike } from "./chain.js";
+import type { ExternalResolver } from "./external.js";
 import type { RegistryResolver } from "./registry.js";
 import type { IndexedTransaction, IndexerStore } from "./store.js";
 import { TRANSFER_EVENT, USDC_ADDRESS } from "./usdc.js";
@@ -28,6 +29,12 @@ export interface IndexerDeps {
   publicClient: PublicClientLike;
   store: IndexerStore;
   registry: RegistryResolver;
+  /**
+   * Optional resolver for known external (non-Swarmwage) recipient addresses.
+   * Tags matching transfers with `recipient_source` / `recipient_label`
+   * without registering them as agents. Defaults to a no-op when omitted.
+   */
+  external?: ExternalResolver;
   network: IndexerNetwork;
   chainId: number;
   /** Initial block to start indexing from when the store has no cursor. */
@@ -70,6 +77,7 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
     publicClient,
     store,
     registry,
+    external,
     network,
     chainId,
     maxBlockRange,
@@ -147,6 +155,7 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
         const value = log.args.value;
         if (!from || !to || value === undefined) return null;
         const recipientKey = to.toLowerCase();
+        const ext = external?.resolve(recipientKey) ?? null;
         return {
           chain_id: chainId,
           block_number: log.blockNumber,
@@ -155,6 +164,8 @@ export function createIndexer(deps: IndexerDeps): IndexerHandle {
           from_address: from,
           to_address: to,
           recipient_agent_id: recipientToAgent.get(recipientKey) ?? null,
+          recipient_source: ext?.source ?? null,
+          recipient_label: ext?.label ?? null,
           value_usdc_atomic: value,
           ts: blockTs.get(log.blockNumber) ?? Math.floor(Date.now() / 1000),
         };

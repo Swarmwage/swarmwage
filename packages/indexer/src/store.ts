@@ -21,6 +21,14 @@ export interface IndexedTransaction {
    * way — the registry mapping can be backfilled later.
    */
   recipient_agent_id: string | null;
+  /**
+   * Provenance of an *external* (non-Swarmwage) recipient, e.g.
+   * "example-catalog", or `null` when the address is unknown or is one of our
+   * own registered agents. Orthogonal to `recipient_agent_id`.
+   */
+  recipient_source?: string | null;
+  /** Human label for an external recipient, e.g. "Example Service". `null` when unknown. */
+  recipient_label?: string | null;
   /** USDC atomic units (6 decimals). Stored as bigint to avoid precision loss. */
   value_usdc_atomic: bigint;
   /** Unix timestamp in seconds at which the block was mined. */
@@ -141,6 +149,8 @@ export class PostgresStore implements IndexerStore {
       from_address: tx.from_address,
       to_address: tx.to_address,
       recipient_agent_id: tx.recipient_agent_id,
+      recipient_source: tx.recipient_source ?? null,
+      recipient_label: tx.recipient_label ?? null,
       value_usdc_atomic: tx.value_usdc_atomic,
       ts: new Date(tx.ts * 1000),
     }));
@@ -154,6 +164,8 @@ export class PostgresStore implements IndexerStore {
         "from_address",
         "to_address",
         "recipient_agent_id",
+        "recipient_source",
+        "recipient_label",
         "value_usdc_atomic",
         "ts",
       )}
