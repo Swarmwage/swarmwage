@@ -11,14 +11,23 @@ License: MIT.
 
 ### Added
 
-- `payX402(req: PayX402Request): Promise<PayX402Response>` — pay **any**
+- `payX402(req: PayX402Request): Promise<PayX402Response>` — pay an
   external x402 endpoint from the buyer wallet, not just listings in the
   Swarmwage registry. The SDK handles the HTTP 402 payment dance (USDC on
   Base via EIP-3009) and returns `{ url, status, data, tx_hash,
   amount_paid_usdc, latency_ms }`. Honors `max_price_usdc` as a spend cap.
-  Enables buyers to reach third-party x402 marketplaces and services
-  through the same client.
+  Lets buyers reach standard x402 services through the same client.
 - `PayX402Request` / `PayX402Response` exported types.
+
+### Known limitation
+
+`payX402` reads the payment requirements from the 402 **response body**
+(the canonical `{ x402Version, accepts }` shape consumed by `x402-fetch`).
+Endpoints that advertise their requirements only through a
+`Payment-Required` response header (the x402-v2 / bazaar transport) are
+not yet supported — that path needs the `@x402/extensions` stack and is
+tracked as a follow-up. When requirements can't be read, the call errors
+rather than paying an unverified amount.
 
 ### Note
 
