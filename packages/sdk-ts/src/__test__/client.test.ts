@@ -62,15 +62,27 @@ function mockFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-    const method = init?.method ?? "GET";
-    const body =
-      typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+    // @x402/fetch (x402 v2) invokes the wrapped fetch with a single Request
+    // object (`fetch(new Request(input, init))`), so the method/body live on
+    // the Request, not in `init`. Handle both shapes.
+    let url: string;
+    let method: string;
+    let bodyRaw: string | undefined;
+    if (input instanceof Request) {
+      url = input.url;
+      method = input.method;
+      bodyRaw = await input.clone().text();
+    } else {
+      url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input as Request).url;
+      method = init?.method ?? "GET";
+      bodyRaw = typeof init?.body === "string" ? init.body : undefined;
+    }
+    const body = bodyRaw ? JSON.parse(bodyRaw) : undefined;
     const call: RecordedCall = { url, method, body };
     calls.push(call);
     const route = routes.find((r) => r.match(url, method));

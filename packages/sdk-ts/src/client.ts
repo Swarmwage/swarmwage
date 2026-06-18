@@ -1,13 +1,7 @@
 // Swarmwage Agent SDK — main AgentClient
 // License: MIT
 
-import { createWalletClient, http } from "viem";
-import { base, baseSepolia } from "viem/chains";
-import { wrapFetchWithPayment } from "x402-fetch";
-import {
-  selectPaymentRequirements,
-  type PaymentRequirementsSelector,
-} from "x402/client";
+import { buildPaidFetch, decodeSettlement } from "./x402.js";
 import { Transport } from "./transport.js";
 import { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
 import {
@@ -127,7 +121,6 @@ export class AgentClient {
   private budgetState: BudgetState | null;
   private readonly transport: Transport;
   private readonly telemetry: ReturnType<typeof createTelemetry>;
-  private readonly walletClient: ReturnType<typeof createWalletClient>;
 
   constructor(opts: AgentClientOptions) {
     this.wallet = createWallet({ privateKey: opts.privateKey });
@@ -137,26 +130,16 @@ export class AgentClient {
       facilitatorUrl: opts.facilitatorUrl,
     });
 
-    const chain = this.network === "base" ? base : baseSepolia;
-    this.walletClient = createWalletClient({
-      account: this.wallet.account,
-      transport: http(opts.rpcUrl),
-      chain,
-    });
-
-    // viem's `WalletClient` types `account` as `Account | undefined` even when
-    // we know it's a defined PrivateKeyAccount; x402-fetch's SignerWallet type
-    // requires the narrower form. We cast at the boundary.
-    //
     // Default-tier paidFetch (used outside hire(), e.g. for /v1/listings etc.)
-    // — gets a high default maxValue so it doesn't bottleneck on x402-fetch's
-    // 0.10 USDC default. Per-hire paidFetch is constructed inside hire() with
-    // the caller's actual max_price_usdc as the cap.
-    const paidFetch = wrapFetchWithPayment(
-      globalThis.fetch,
-      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
-      DEFAULT_PAID_FETCH_MAX_VALUE_ATOMIC,
-    ) as unknown as typeof fetch;
+    // — gets a high default cap so it doesn't bottleneck a priced call. No
+    // anti-hijack here (not a hire). Per-hire/per-call paidFetch is built
+    // inside hire()/payX402() with the caller's actual max_price_usdc as cap.
+    const paidFetch = buildPaidFetch({
+      account: this.wallet.account,
+      network: this.network,
+      maxValueAtomic: DEFAULT_PAID_FETCH_MAX_VALUE_ATOMIC,
+      facilitatorUrl: this.facilitatorUrl,
+    });
 
     this.budgetState = opts.budget ? createBudgetState(opts.budget) : null;
     this.transport = new Transport({
@@ -274,19 +257,25 @@ export class AgentClient {
         "(any)",
       );
     }
-    // Convert the caller's max_price_usdc cap into x402-fetch's atomic-units
-    // maxValue parameter. Without this the underlying x402-fetch defaults to
-    // 0.10 USDC and rejects any priced seller above that — the SDK's own
-    // max_price_usdc parameter would be silently shadowed by the lower
-    // hardcoded floor. We honor the caller's cap exactly.
+    // The caller's max_price_usdc becomes the hard spend cap. Anti-hijack is
+    // enforced by passing expectedSellerId: the payment selector refuses to
+    // sign unless the seller's 402 challenge pays out to the resolved sellerId.
     const hireMaxValueAtomic = usdcStringToAtomic(req.max_price_usdc);
+    // The payment selector throws SellerMismatchError on a payTo mismatch, but
+    // @x402/fetch re-wraps it as a generic error; capture the structured one
+    // here so we can restore it after the transport call.
+    let paymentRejection: Error | undefined;
     const paidFetchForHire = validateSeller && sellerId
-      ? (wrapFetchWithPayment(
-          globalThis.fetch,
-          this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
-          hireMaxValueAtomic,
-          makeAntiHijackSelector(sellerId, this.network, this.facilitatorUrl),
-        ) as unknown as typeof fetch)
+      ? buildPaidFetch({
+          account: this.wallet.account,
+          network: this.network,
+          maxValueAtomic: hireMaxValueAtomic,
+          expectedSellerId: sellerId,
+          facilitatorUrl: this.facilitatorUrl,
+          onReject: (e) => {
+            paymentRejection = e;
+          },
+        })
       : undefined;
 
     const nonce = req.nonce ?? crypto.randomUUID();
@@ -318,7 +307,7 @@ export class AgentClient {
         paid: true,
         paidFetch: paidFetchForHire,
         onResponse: (res) => {
-          txHashFromHeader = decodeX402SettlementTxHash(res);
+          txHashFromHeader = decodeSettlement(res).txHash;
         },
       });
     } catch (err) {
@@ -327,6 +316,11 @@ export class AgentClient {
         capability: req.capability,
         reason: (err as Error).message,
       });
+      // Restore the typed error the selector raised (e.g. SellerMismatchError),
+      // which @x402/fetch wrapped into a generic payment-creation error.
+      if (paymentRejection) {
+        throw paymentRejection;
+      }
       // x402 settlement failure after the EIP-3009 retry surfaces as a
       // second HTTP 402 from the seller. Re-throw as a typed error so the
       // calling agent (or MCP wrapper) can guide the user to fund the
@@ -418,33 +412,21 @@ export class AgentClient {
     const maxPrice = req.max_price_usdc ?? "1.00";
     if (this.budgetState) assertCanSpend(this.budgetState, maxPrice);
 
-    // Capture the amount the selected requirement demands so budget accounting
-    // reflects what was actually paid (not the cap). The selector runs only
-    // when the endpoint issues a 402 — a free/already-paid 200 leaves this
-    // undefined and books no spend.
-    let paidAtomic: bigint | undefined;
-    const selector: PaymentRequirementsSelector = (reqs, _network, scheme) => {
-      const selected = selectPaymentRequirements(reqs, this.network, scheme);
-      try {
-        paidAtomic = BigInt(selected.maxAmountRequired);
-      } catch {
-        /* best-effort: leave undefined */
-      }
-      if (this.facilitatorUrl) {
-        selected.extra = {
-          ...(selected.extra ?? {}),
-          swarmwageFacilitatorUrl: this.facilitatorUrl,
-        };
-      }
-      return selected;
-    };
-
-    const paidFetch = wrapFetchWithPayment(
-      globalThis.fetch,
-      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
-      usdcStringToAtomic(maxPrice),
-      selector,
-    ) as unknown as typeof fetch;
+    // Capture the amount the selected requirement demands (estimate) so budget
+    // accounting reflects what was actually paid (not the cap). onSelected runs
+    // only when the endpoint issues a 402 — a free/already-paid 200 leaves this
+    // undefined and books no spend. The actual settled amount from the
+    // settlement header (when present) takes precedence below.
+    let estimatedAtomic: bigint | undefined;
+    const paidFetch = buildPaidFetch({
+      account: this.wallet.account,
+      network: this.network,
+      maxValueAtomic: usdcStringToAtomic(maxPrice),
+      facilitatorUrl: this.facilitatorUrl,
+      onSelected: (atomic) => {
+        estimatedAtomic = atomic;
+      },
+    });
 
     const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
     this.telemetry.send({ kind: "x402_call", url: req.url });
@@ -452,6 +434,7 @@ export class AgentClient {
     const t0 = Date.now();
     let status = 0;
     let txHash: string | undefined;
+    let settledAtomic: bigint | undefined;
     let data: unknown;
     try {
       data = await this.transport.json<unknown>(req.url, {
@@ -462,7 +445,9 @@ export class AgentClient {
         paidFetch,
         onResponse: (res) => {
           status = res.status;
-          txHash = decodeX402SettlementTxHash(res);
+          const settlement = decodeSettlement(res);
+          txHash = settlement.txHash;
+          settledAtomic = settlement.amountAtomic;
         },
       });
     } catch (err) {
@@ -485,8 +470,11 @@ export class AgentClient {
       throw err;
     }
 
+    // Prefer the actual settled amount from the settlement header; fall back to
+    // the requirement estimate captured during selection.
+    const billedAtomic = settledAtomic ?? estimatedAtomic;
     const amountPaid =
-      paidAtomic !== undefined ? atomicToUsdcString(paidAtomic) : undefined;
+      billedAtomic !== undefined ? atomicToUsdcString(billedAtomic) : undefined;
     if (this.budgetState && amountPaid) {
       recordSpend(this.budgetState, amountPaid);
     }
@@ -541,29 +529,43 @@ export class AgentClient {
     // Same anti-hijack + price-cap posture as the sync hire() path: the
     // payment selector refuses to sign unless the seller's 402 challenge
     // pays out to the agent_id we resolved the listing from.
-    const paidFetchForAsyncHire = wrapFetchWithPayment(
-      globalThis.fetch,
-      this.walletClient as Parameters<typeof wrapFetchWithPayment>[1],
-      usdcStringToAtomic(req.max_price_usdc),
-      makeAntiHijackSelector(req.agent_id, this.network, this.facilitatorUrl),
-    ) as unknown as typeof fetch;
-
-    return this.transport.json<AsyncHireResponse>(`${endpoint}/hire`, {
-      method: "POST",
-      body: JSON.stringify({
-        protocol: PROTOCOL_VERSION,
-        buyer_id: this.agentId,
-        capability: req.capability,
-        params: req.params,
-        max_price_usdc: req.max_price_usdc,
-        max_latency_ms: req.max_latency_ms,
-        budget_token: req.budget_token ?? this.budgetState?.token,
-        callback_url: req.callback_url,
-        nonce: req.nonce ?? crypto.randomUUID(),
-      }),
-      paid: true,
-      paidFetch: paidFetchForAsyncHire,
+    let paymentRejection: Error | undefined;
+    const paidFetchForAsyncHire = buildPaidFetch({
+      account: this.wallet.account,
+      network: this.network,
+      maxValueAtomic: usdcStringToAtomic(req.max_price_usdc),
+      expectedSellerId: req.agent_id,
+      facilitatorUrl: this.facilitatorUrl,
+      onReject: (e) => {
+        paymentRejection = e;
+      },
     });
+
+    try {
+      return await this.transport.json<AsyncHireResponse>(`${endpoint}/hire`, {
+        method: "POST",
+        body: JSON.stringify({
+          protocol: PROTOCOL_VERSION,
+          buyer_id: this.agentId,
+          capability: req.capability,
+          params: req.params,
+          max_price_usdc: req.max_price_usdc,
+          max_latency_ms: req.max_latency_ms,
+          budget_token: req.budget_token ?? this.budgetState?.token,
+          callback_url: req.callback_url,
+          nonce: req.nonce ?? crypto.randomUUID(),
+        }),
+        paid: true,
+        paidFetch: paidFetchForAsyncHire,
+      });
+    } catch (err) {
+      // Restore the typed selector error (e.g. SellerMismatchError) wrapped by
+      // @x402/fetch into a generic payment-creation error.
+      if (paymentRejection) {
+        throw paymentRejection;
+      }
+      throw err;
+    }
   }
 
   async getJob(endpoint: string, jobId: string): Promise<JobStatus> {
@@ -643,64 +645,6 @@ function isZeroHash(h: string | undefined | null): boolean {
   return !h || h === ZERO_HASH || h === "0x" || h === "";
 }
 
-/**
- * Build an x402 PaymentRequirementsSelector that:
- *  1. Forces selection to our configured network (rejects cross-chain
- *     requirements an attacker could splice in to drain a wallet that holds
- *     funds elsewhere).
- *  2. Accepts a payment requirement only if its `payTo` matches the buyer's
- *     expected sellerId.
- *  3. Optionally annotates `extra.swarmwageFacilitatorUrl` so
- *     facilitator-aware sellers see the buyer's preferred facilitator
- *     directly on the requirement (the same hint is also sent as the
- *     `X-Swarmwage-Facilitator` request header by the transport).
- *
- * Throws `SellerMismatchError` BEFORE any signature is created, so funds
- * remain safe.
- */
-function makeAntiHijackSelector(
-  expectedSellerId: AgentId,
-  network: SwarmwageNetwork,
-  facilitatorUrl: string | null,
-): PaymentRequirementsSelector {
-  const expected = expectedSellerId.toLowerCase();
-  return (paymentRequirements, _network, scheme) => {
-    // Force-narrow to our network. Otherwise an attacker could include a
-    // requirement on a different chain where the buyer happens to have funds.
-    const selected = selectPaymentRequirements(
-      paymentRequirements,
-      network,
-      scheme,
-    );
-    const actual = (selected.payTo ?? "").toLowerCase();
-    if (actual !== expected) {
-      throw new SellerMismatchError(expected, actual || "(missing)");
-    }
-    if (facilitatorUrl) {
-      // `extra` is an opaque Record<string, any> in the x402 spec; safe to
-      // annotate. The EIP-3009 authorization signed downstream covers
-      // (from, to, value, validAfter, validBefore, nonce) only — adding
-      // this hint does not invalidate the signature.
-      selected.extra = {
-        ...(selected.extra ?? {}),
-        swarmwageFacilitatorUrl: facilitatorUrl,
-      };
-    }
-    return selected;
-  };
-}
-
-function decodeX402SettlementTxHash(res: Response): string | undefined {
-  const xpr = res.headers.get("X-PAYMENT-RESPONSE");
-  if (!xpr) return undefined;
-  try {
-    const decoded = JSON.parse(
-      typeof atob === "function"
-        ? atob(xpr)
-        : Buffer.from(xpr, "base64").toString("utf8"),
-    ) as { transaction?: string; txHash?: string };
-    return decoded.transaction ?? decoded.txHash ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
+// Payment-requirement selection (network-force + anti-hijack + spend cap +
+// facilitator hint) and settlement decoding now live in ./x402.ts, built on
+// the x402 protocol v2 stack (@x402/core + @x402/fetch + @x402/evm).
