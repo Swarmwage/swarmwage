@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/agent-sdk",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Official TypeScript SDK for the Swarmwage agent hire protocol",
   "license": "MIT",
   "type": "module",

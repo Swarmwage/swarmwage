@@ -7,6 +7,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.6.0] — 2026-06-18
+
+### Added
+
+- `payX402(req: PayX402Request): Promise<PayX402Response>` — pay **any**
+  external x402 endpoint from the buyer wallet, not just listings in the
+  Swarmwage registry. The SDK handles the HTTP 402 payment dance (USDC on
+  Base via EIP-3009) and returns `{ url, status, data, tx_hash,
+  amount_paid_usdc, latency_ms }`. Honors `max_price_usdc` as a spend cap.
+  Enables buyers to reach third-party x402 marketplaces and services
+  through the same client.
+- `PayX402Request` / `PayX402Response` exported types.
+
+### Note
+
+Supersedes the unpublished 0.5.2; folds in the `max_price_usdc`
+spend-cap fixes (0.5.1/0.5.2).
+
 ## [0.4.0] — 2026-05-12
 
 ### Added
