@@ -10,11 +10,20 @@
 // indexing. Bump LAST_MODIFIED manually when meaningful content lands.
 
 import type { MetadataRoute } from "next";
+import { posts } from "../lib/blog";
 
 const SITE_URL = "https://swarmwage.com";
 const LAST_MODIFIED = new Date("2026-05-09T00:00:00Z");
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  const blogPosts: MetadataRoute.Sitemap = posts.map((p) => ({
+    url: `${SITE_URL}/blog/${p.meta.slug}`,
+    // Stable per-post date (meta.date/updated), never `new Date()` — see note above.
+    lastModified: new Date(`${p.meta.updated ?? p.meta.date}T00:00:00Z`),
+    changeFrequency: "monthly",
+    priority: 0.7,
+  }));
+
   return [
     {
       url: SITE_URL,
@@ -22,5 +31,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 1.0,
     },
+    {
+      url: `${SITE_URL}/blog`,
+      lastModified: posts[0]
+        ? new Date(`${posts[0].meta.date}T00:00:00Z`)
+        : LAST_MODIFIED,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    ...blogPosts,
   ];
 }
