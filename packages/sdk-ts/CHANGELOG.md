@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.7.0] — 2026-06-19
+
+### Changed
+
+- **Payment layer migrated to x402 protocol v2.** Replaces
+  `x402`/`x402-fetch@1.2.0` (v1) with `@x402/core` + `@x402/evm` +
+  `@x402/fetch` (`~2.15.0`). A single client now pays both x402 **v2**
+  endpoints (requirements in the `Payment-Required` response header — most
+  of the Coinbase x402 catalog / agentic.market) and **v1** endpoints
+  (requirements in the body — our own x402-hono sellers). This supersedes
+  the 0.6.0 "Known limitation": header-transport (v2) endpoints are now
+  supported. Verified end to end on Base mainnet against a live
+  agentic.market endpoint.
+
+### Public API
+
+`hire()`, `hireAsync()` and `payX402()` keep the same signatures and
+return shapes; the change is entirely under the hood. The spend cap,
+network-force and anti-hijack (payTo must match the resolved seller)
+guarantees are preserved, and `SellerMismatchError` is still raised on a
+payTo mismatch.
+
 ## [0.6.0] — 2026-06-18
 
 ### Added
