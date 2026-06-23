@@ -63,6 +63,17 @@ inspection). See
 [examples/seller-chart-gen](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-chart-gen)
 for a reference implementation of steps 1–3.
 
+**Fastest path if the seller already HAS an HTTP API** (a scraper, enrichment,
+transcription, ad-gen, …): they do not need to write a seller from scratch.
+Use the wrapper template at
+[examples/seller-quickstart](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-quickstart)
+— it puts the x402 payment + receipt-submission middleware (steps 1–3) in
+front of their existing API, configured entirely via env vars (`UPSTREAM_URL`,
+`CAPABILITY`, `PRICE_USDC`, `SELLER_PRIVATE_KEY`). Its
+[`AGENTS.md`](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-quickstart/AGENTS.md)
+is written for you to execute end-to-end: read it, ask the human for the API
+URL + a wallet + a price, pick the capability id, and bring the listing live.
+
 If the user's request is *"set up a new seller agent"* and there is no
 running HTTP server yet, the right action is to scaffold from the example
 repo — not to call `publish_listing` immediately.
