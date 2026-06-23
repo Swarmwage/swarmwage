@@ -21,6 +21,8 @@ import type {
 
 import type {
   ClaimChallenge,
+  ExternalX402ReliabilityRecord,
+  ExternalX402ServiceReliability,
   HireRecord,
   RatingRecord,
   ReceiptRecord,
@@ -674,6 +676,135 @@ export class PostgresStore implements RegistryStore {
     `;
   }
 
+  async appendExternalX402ReliabilityRecord(
+    record: ExternalX402ReliabilityRecord,
+  ): Promise<{ id: string }> {
+    const inserted = await this.sql<{ id: string }[]>`
+      INSERT INTO external_x402_reliability_records (
+        ts, trust_level, buyer_agent_id, source, service_id, service_name,
+        category, endpoint_description, pricing_scheme, url, method, status,
+        amount_paid_usdc, tx_hash, latency_ms, request_hash, response_hash,
+        verifier_kind, verifier_status, verifier_checks, error
+      ) VALUES (
+        to_timestamp(${record.ts}::double precision / 1000),
+        ${record.trust_level},
+        ${record.buyer_agent_id ? record.buyer_agent_id.toLowerCase() : null},
+        ${record.source ?? null},
+        ${record.service_id ?? null},
+        ${record.service_name ?? null},
+        ${record.category ?? null},
+        ${record.endpoint_description ?? null},
+        ${record.pricing_scheme ?? null},
+        ${record.url},
+        ${record.method},
+        ${record.status},
+        ${record.amount_paid_usdc ?? null},
+        ${record.tx_hash ?? null},
+        ${record.latency_ms},
+        ${record.request_hash ?? null},
+        ${record.response_hash},
+        ${record.verifier_kind},
+        ${record.verifier_status},
+        ${this.sql.json(record.verifier_checks as never)},
+        ${record.error ?? null}
+      )
+      RETURNING id
+    `;
+    return { id: inserted[0]?.id ?? "" };
+  }
+
+  async listExternalX402ServiceReliability(
+    opts: {
+      limit?: number;
+      source?: string;
+      service_id?: string;
+      url?: string;
+    } = {},
+  ): Promise<ExternalX402ServiceReliability[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const source = opts.source ?? null;
+    const serviceId = opts.service_id ?? null;
+    const url = opts.url ?? null;
+    const rows = await this.sql<
+      Array<{
+        id: string;
+        ts: Date;
+        trust_level: "client_observed";
+        buyer_agent_id: string | null;
+        source: string | null;
+        service_id: string | null;
+        service_name: string | null;
+        category: string | null;
+        endpoint_description: string | null;
+        pricing_scheme: string | null;
+        url: string;
+        method: string;
+        status: number;
+        amount_paid_usdc: string | null;
+        tx_hash: string | null;
+        latency_ms: number;
+        request_hash: string | null;
+        response_hash: string;
+        verifier_kind: "none" | "json" | "custom";
+        verifier_status: "unknown" | "pass" | "fail";
+        verifier_checks: Record<string, boolean>;
+        error: string | null;
+      }>
+    >`
+      SELECT id, ts, trust_level, buyer_agent_id, source, service_id,
+             service_name, category, endpoint_description, pricing_scheme,
+             url, method, status, amount_paid_usdc, tx_hash, latency_ms,
+             request_hash, response_hash, verifier_kind, verifier_status,
+             verifier_checks, error
+      FROM external_x402_reliability_records
+      WHERE (${source}::text IS NULL OR source = ${source})
+        AND (${serviceId}::text IS NULL OR service_id = ${serviceId})
+        AND (${url}::text IS NULL OR url = ${url})
+      ORDER BY ts DESC
+      LIMIT ${limit * 100}
+    `;
+
+    const groups = new Map<
+      string,
+      Array<ExternalX402ReliabilityRecord & { id: string }>
+    >();
+    for (const row of rows) {
+      const record: ExternalX402ReliabilityRecord & { id: string } = {
+        id: row.id,
+        ts: row.ts.getTime(),
+        trust_level: row.trust_level,
+        buyer_agent_id: row.buyer_agent_id as AgentId | null,
+        source: row.source ?? undefined,
+        service_id: row.service_id ?? undefined,
+        service_name: row.service_name ?? undefined,
+        category: row.category ?? undefined,
+        endpoint_description: row.endpoint_description ?? undefined,
+        pricing_scheme: row.pricing_scheme ?? undefined,
+        url: row.url,
+        method: row.method,
+        status: row.status,
+        amount_paid_usdc: row.amount_paid_usdc ?? undefined,
+        tx_hash: row.tx_hash as `0x${string}` | undefined,
+        latency_ms: row.latency_ms,
+        request_hash: row.request_hash as `0x${string}` | undefined,
+        response_hash: row.response_hash as `0x${string}`,
+        verifier_kind: row.verifier_kind,
+        verifier_status: row.verifier_status,
+        verifier_checks: row.verifier_checks,
+        error: row.error ?? undefined,
+      };
+      const key = `${record.source ?? ""}:${record.service_id ?? ""}:${record.method}:${record.url}`;
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+
+    return Array.from(groups.values())
+      .map(aggregateExternalX402Group)
+      .sort((a, b) => b.last_call_ts - a.last_call_ts)
+      .slice(0, limit);
+  }
+
   /** Close the connection pool. Call on graceful shutdown. */
   async close(): Promise<void> {
     if (this.watchdog) clearInterval(this.watchdog);
@@ -693,4 +824,59 @@ function rowToListing(row: ListingRow): Listing {
     endpoint: row.endpoint,
     signature: row.signature as `0x${string}`,
   };
+}
+
+function aggregateExternalX402Group(
+  records: Array<ExternalX402ReliabilityRecord & { id: string }>,
+): ExternalX402ServiceReliability {
+  const latest = records.reduce((a, b) => (b.ts > a.ts ? b : a));
+  const final_status_counts: Record<string, number> = {};
+  const verifier_counts: Record<"unknown" | "pass" | "fail", number> = {
+    unknown: 0,
+    pass: 0,
+    fail: 0,
+  };
+  let paid = 0;
+  let ok = 0;
+  let withTx = 0;
+  const latencies: number[] = [];
+  for (const record of records) {
+    final_status_counts[String(record.status)] =
+      (final_status_counts[String(record.status)] ?? 0) + 1;
+    verifier_counts[record.verifier_status] += 1;
+    if (record.amount_paid_usdc) paid += 1;
+    if (!record.error && record.status >= 200 && record.status < 400) ok += 1;
+    if (record.tx_hash) withTx += 1;
+    latencies.push(record.latency_ms);
+  }
+  latencies.sort((a, b) => a - b);
+
+  return {
+    trust_level: "client_observed",
+    source: latest.source,
+    service_id: latest.service_id,
+    service_name: latest.service_name,
+    category: latest.category,
+    endpoint_description: latest.endpoint_description,
+    pricing_scheme: latest.pricing_scheme,
+    url: latest.url,
+    method: latest.method,
+    calls: records.length,
+    paid_calls: paid,
+    success_rate: records.length === 0 ? 0 : ok / records.length,
+    final_status_counts,
+    latency_ms: {
+      p50: percentile(latencies, 0.5),
+      p95: percentile(latencies, 0.95),
+    },
+    last_call_ts: latest.ts,
+    verifier_counts,
+    tx_hash_coverage: records.length === 0 ? 0 : withTx / records.length,
+  };
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const idx = Math.ceil(values.length * p) - 1;
+  return values[Math.min(Math.max(idx, 0), values.length - 1)] ?? null;
 }

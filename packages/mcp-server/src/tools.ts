@@ -230,9 +230,38 @@ export const tools: Tool[] = [
     },
   },
   {
+    name: "get_x402_service_reliability",
+    description:
+      "Read Swarmwage's client-observed reliability aggregates for third-party x402 endpoints. Use this after search_x402_services, or before call_x402_service, to inspect observed calls, paid-call count, success rate, latency p50/p95, HTTP status distribution, verifier counts, and tx-hash coverage. Read-only, no wallet required.\n\nTrust class: these records are client-observed evidence submitted by Swarmwage SDK/MCP buyers. They are NOT seller-signed Swarmwage receipts, not capability verification, and not a guarantee that the external provider endorses the result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: {
+          type: "string",
+          description:
+            "Optional attribution source filter, e.g. 'agentic.market'.",
+        },
+        service_id: {
+          type: "string",
+          description:
+            "Optional external catalog service id, typically from search_x402_services.call_hint.service_id.",
+        },
+        url: {
+          type: "string",
+          description:
+            "Optional exact endpoint URL, typically from search_x402_services.call_hint.url.",
+        },
+        limit: {
+          type: "number",
+          description: "Max aggregate rows to return. Default 50, max 200.",
+        },
+      },
+    },
+  },
+  {
     name: "call_x402_service",
     description:
-      "Pay for and call ANY x402-enabled HTTP endpoint directly from this agent's wallet — including third-party services NOT listed on the Swarmwage registry (e.g. an external x402 catalog). Use this when you already know the exact endpoint URL of a paid service and want to call it with its own native request shape, rather than discovering a Swarmwage seller via search_agents/hire_agent.\n\nDifference from hire_agent: hire_agent targets a Swarmwage-protocol seller (capability + verified output + rating). call_x402_service makes a raw paid HTTP request to an arbitrary x402 URL and returns its raw JSON response — there is no capability verification or rating. The SDK handles the 402 → payment → retry dance, forces payment onto Base, and refuses to pay above max_price_usdc. If the wallet lacks USDC, returns a fund-the-wallet instruction (do NOT substitute another service). Requires a wallet.",
+      "Pay for and call ANY x402-enabled HTTP endpoint directly from this agent's wallet — including third-party services NOT listed on the Swarmwage registry (e.g. an external x402 catalog). Use this when you already know the exact endpoint URL of a paid service and want to call it with its own native request shape, rather than discovering a Swarmwage seller via search_agents/hire_agent. Set `dry_run: true` first to inspect the endpoint, max price, and trust class without loading a wallet, calling the endpoint, or paying.\n\nDifference from hire_agent: hire_agent targets a Swarmwage-protocol seller (capability + verified output + rating). call_x402_service makes a raw paid HTTP request to an arbitrary x402 URL and returns its raw JSON response plus `trust_level: client_observed` and a trust note. There is no seller-signed Swarmwage receipt, capability verification, or rating, but the SDK submits a client-observed reliability record when possible. The SDK handles the 402 → payment → retry dance, forces payment onto Base, and refuses to pay above max_price_usdc. If the wallet lacks USDC, returns a fund-the-wallet instruction (do NOT substitute another service). Requires a wallet unless `dry_run: true`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -261,6 +290,11 @@ export const tools: Tool[] = [
           type: "string",
           description:
             "Willingness-to-pay cap per call, USDC decimal string, e.g. '0.05'. The SDK refuses to sign a payment above this. Defaults to '1.00'.",
+        },
+        dry_run: {
+          type: "boolean",
+          description:
+            "When true, return a no-spend call plan with endpoint, method, max price, and trust class. Does not load a wallet, call the endpoint, pay, or create reliability evidence.",
         },
         source: {
           type: "string",

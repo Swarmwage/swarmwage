@@ -12,6 +12,7 @@ import {
   InsufficientFundsError,
   type AgentClient,
   type AgentId,
+  type ExternalX402ReliabilityResponse,
   type Reputation,
   type SearchResponse,
 } from "@swarmwage/agent-sdk";
@@ -104,6 +105,34 @@ const EXTERNAL_X402_SEARCH: AgenticMarketSearchResponse = {
   ],
 };
 
+const EXTERNAL_X402_RELIABILITY: ExternalX402ReliabilityResponse = {
+  trust_level: "client_observed",
+  count: 1,
+  note:
+    "External x402 services are third-party endpoints, not Swarmwage sellers. These aggregates are client-observed reliability evidence, not seller-signed receipts or guarantees.",
+  services: [
+    {
+      trust_level: "client_observed",
+      source: "agentic.market",
+      service_id: "exa-ai",
+      service_name: "Exa",
+      category: "Search",
+      endpoint_description: "Search the web",
+      pricing_scheme: "exact",
+      url: "https://api.exa.ai/search",
+      method: "POST",
+      calls: 3,
+      paid_calls: 2,
+      success_rate: 2 / 3,
+      final_status_counts: { "200": 2, "500": 1 },
+      latency_ms: { p50: 120, p95: 240 },
+      last_call_ts: 1_719_000_000_000,
+      verifier_counts: { unknown: 3, pass: 0, fail: 0 },
+      tx_hash_coverage: 2 / 3,
+    },
+  ],
+};
+
 function makeDeps(overrides: Partial<ToolHandlerDeps> = {}): ToolHandlerDeps {
   return {
     // Lookup-only by default — the most common cold-install state.
@@ -111,6 +140,7 @@ function makeDeps(overrides: Partial<ToolHandlerDeps> = {}): ToolHandlerDeps {
     directSearch: async () => EMPTY_SEARCH,
     directReputation: async () => SAMPLE_REPUTATION,
     searchExternalX402Services: async () => EXTERNAL_X402_SEARCH,
+    directExternalX402Reliability: async () => EXTERNAL_X402_RELIABILITY,
     ...overrides,
   };
 }
@@ -253,6 +283,96 @@ describe("search_x402_services", () => {
   });
 });
 
+describe("call_x402_service dry-run", () => {
+  test("returns a no-spend plan without loading a wallet", async () => {
+    const handler = createToolHandler(
+      makeDeps({
+        ensureClient: async () => {
+          throw new Error("wallet load should not run");
+        },
+      }),
+    );
+
+    const res = await handler({
+      name: "call_x402_service",
+      arguments: {
+        dry_run: true,
+        url: "https://api.exa.ai/search",
+        method: "POST",
+        body: { query: "swarmwage" },
+        max_price_usdc: "0.02",
+        source: "agentic.market",
+        service_id: "exa-ai",
+        service_name: "Exa",
+        endpoint_description: "Search the web",
+        category: "Search",
+        pricing_scheme: "exact",
+      },
+    });
+
+    assert.ok(!res.isError);
+    const body = parseText(res) as {
+      dry_run: boolean;
+      requires_wallet_for_real_call: boolean;
+      would_call: {
+        url: string;
+        method: string;
+        max_price_usdc: string;
+        trust_level: string;
+        trust_note: string;
+      };
+      next_step: string;
+    };
+    assert.equal(body.dry_run, true);
+    assert.equal(body.requires_wallet_for_real_call, true);
+    assert.equal(body.would_call.url, "https://api.exa.ai/search");
+    assert.equal(body.would_call.method, "POST");
+    assert.equal(body.would_call.max_price_usdc, "0.02");
+    assert.equal(body.would_call.trust_level, "client_observed");
+    assert.match(body.would_call.trust_note, /does not call the endpoint/);
+    assert.match(body.next_step, /funded wallet/);
+  });
+});
+
+describe("get_x402_service_reliability", () => {
+  test("reads client-observed external x402 reliability without requiring a wallet", async () => {
+    let seen: Record<string, unknown> | null = null;
+    const handler = createToolHandler(
+      makeDeps({
+        ensureClient: async () => {
+          throw new Error("wallet load should not run");
+        },
+        directExternalX402Reliability: async (req) => {
+          seen = req as unknown as Record<string, unknown>;
+          return EXTERNAL_X402_RELIABILITY;
+        },
+      }),
+    );
+
+    const res = await handler({
+      name: "get_x402_service_reliability",
+      arguments: {
+        source: "agentic.market",
+        service_id: "exa-ai",
+        url: "https://api.exa.ai/search",
+        limit: 5,
+      },
+    });
+
+    assert.ok(!res.isError);
+    assert.deepEqual(seen, {
+      source: "agentic.market",
+      service_id: "exa-ai",
+      url: "https://api.exa.ai/search",
+      limit: 5,
+    });
+    const body = parseText(res) as ExternalX402ReliabilityResponse;
+    assert.equal(body.trust_level, "client_observed");
+    assert.match(body.note, /not seller-signed receipts/);
+    assert.equal(body.services[0]!.tx_hash_coverage, 2 / 3);
+  });
+});
+
 describe("lookup-only mode (no wallet)", () => {
   test("check_reputation falls back to directReputation", async () => {
     let called = false;
@@ -300,6 +420,7 @@ describe("lookup-only mode (no wallet)", () => {
       assert.equal(res.isError, true);
       assert.match(res.content[0]!.text, /requires a wallet/);
       assert.match(res.content[0]!.text, /lookup-only mode/);
+      assert.match(res.content[0]!.text, /get_x402_service_reliability/);
     });
   }
 });
@@ -396,6 +517,13 @@ describe("wallet mode", () => {
     });
 
     assert.ok(!res.isError);
+    const body = parseText(res) as {
+      trust_level: string;
+      trust_note: string;
+      reliability_record_id?: string;
+    };
+    assert.equal(body.trust_level, "client_observed");
+    assert.match(body.trust_note, /not a seller-signed Swarmwage receipt/);
     assert.deepEqual(seen, {
       url: "https://api.exa.ai/search",
       method: "POST",
@@ -437,6 +565,7 @@ describe("tool catalog", () => {
       "get_my_receipts",
       "list_capabilities",
       "search_x402_services",
+      "get_x402_service_reliability",
       "call_x402_service",
     ];
     for (const name of dispatched) {

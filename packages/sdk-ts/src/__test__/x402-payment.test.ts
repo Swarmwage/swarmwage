@@ -19,6 +19,7 @@ import {
 } from "@x402/core/http";
 import { AgentClient } from "../client.js";
 import { SellerMismatchError, InsufficientFundsError } from "../errors.js";
+import { isReliabilityEnabled } from "../reliability.js";
 import { PROTOCOL_VERSION, type AgentId, type Hex } from "../types.js";
 
 const TEST_PRIVATE_KEY =
@@ -172,9 +173,10 @@ describe("payX402 — full v2 payment flow (agentic.market shape)", () => {
     assert.equal(res.tx_hash, TX);
     assert.equal(res.amount_paid_usdc, "0.001");
     // Exactly two hits: the 402 challenge then the paid retry.
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0]?.hasPaymentHeader, false);
-    assert.equal(calls[1]?.hasPaymentHeader, true);
+    const endpointCalls = calls.filter((c) => c.url.startsWith(EXT_URL));
+    assert.equal(endpointCalls.length, 2);
+    assert.equal(endpointCalls[0]?.hasPaymentHeader, false);
+    assert.equal(endpointCalls[1]?.hasPaymentHeader, true);
   });
 
   test("hard-fails on the spend cap without paying when the price exceeds it", async (t) => {
@@ -191,8 +193,181 @@ describe("payX402 — full v2 payment flow (agentic.market shape)", () => {
       makeClient().payX402({ url: EXT_URL, max_price_usdc: "0.05" }),
     );
     // Only the challenge was hit — no signed retry, no payment.
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0]?.hasPaymentHeader, false);
+    const endpointCalls = calls.filter((c) => c.url.startsWith(EXT_URL));
+    assert.equal(endpointCalls.length, 1);
+    assert.equal(endpointCalls[0]?.hasPaymentHeader, false);
+  });
+});
+
+describe("payX402 — client-observed reliability records", () => {
+  const EXT_URL = "https://api.example.com/x402/mock";
+  const REGISTRY_URL = "https://registry.example";
+
+  test("isReliabilityEnabled honors SWARMWAGE_RELIABILITY=0", () => {
+    assert.equal(isReliabilityEnabled(undefined, {}), true);
+    assert.equal(isReliabilityEnabled(undefined, { SWARMWAGE_RELIABILITY: "0" }), false);
+    assert.equal(isReliabilityEnabled(true, { SWARMWAGE_RELIABILITY: "0" }), true);
+  });
+
+  test("submits reliability evidence by default and returns record id + hashes", async (t) => {
+    const original = globalThis.fetch;
+    const registryPosts: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      if (req.url === EXT_URL) {
+        return new Response(JSON.stringify({ ok: true, b: 2, a: 1 }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url === `${REGISTRY_URL}/v1/reliability/external-x402`) {
+        registryPosts.push(JSON.parse(await req.clone().text()) as Record<string, unknown>);
+        return new Response(JSON.stringify({ reliability_record_id: "rel-123" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unmatched ${req.method} ${req.url}`);
+    }) as typeof fetch;
+    t.after(() => void (globalThis.fetch = original));
+
+    const res = await new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: false,
+      registryUrl: REGISTRY_URL,
+    }).payX402({
+      url: EXT_URL,
+      method: "POST",
+      body: { z: 1, a: 2 },
+      max_price_usdc: "0.05",
+      source: "agentic.market",
+      service_id: "mock-service",
+      service_name: "Mock Service",
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.reliability_record_id, "rel-123");
+    assert.match(res.request_hash ?? "", /^0x[a-f0-9]{64}$/);
+    assert.match(res.response_hash ?? "", /^0x[a-f0-9]{64}$/);
+    assert.equal(registryPosts.length, 1);
+    assert.equal(registryPosts[0]!.trust_level, "client_observed");
+    assert.equal(registryPosts[0]!.url, EXT_URL);
+    assert.equal(registryPosts[0]!.service_id, "mock-service");
+    assert.equal(registryPosts[0]!.status, 200);
+    assert.equal(registryPosts[0]!.verifier_status, "unknown");
+  });
+
+  test("reliability opt-out skips registry POST", async (t) => {
+    const original = globalThis.fetch;
+    let registryPostCount = 0;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      if (req.url === EXT_URL) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url.includes("/v1/reliability/external-x402")) {
+        registryPostCount += 1;
+        throw new Error("reliability POST should not run");
+      }
+      throw new Error(`unmatched ${req.method} ${req.url}`);
+    }) as typeof fetch;
+    t.after(() => void (globalThis.fetch = original));
+
+    const res = await new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: false,
+      registryUrl: REGISTRY_URL,
+      reliability: false,
+    }).payX402({ url: EXT_URL, max_price_usdc: "0.05" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.reliability_record_id, undefined);
+    assert.equal(registryPostCount, 0);
+  });
+
+  test("reliability submit failure does not block payX402", async (t) => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      if (req.url === EXT_URL) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (req.url === `${REGISTRY_URL}/v1/reliability/external-x402`) {
+        return new Response(JSON.stringify({ error: "down" }), {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`unmatched ${req.method} ${req.url}`);
+    }) as typeof fetch;
+    t.after(() => void (globalThis.fetch = original));
+
+    const res = await new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: false,
+      registryUrl: REGISTRY_URL,
+    }).payX402({ url: EXT_URL, max_price_usdc: "0.05" });
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.data, { ok: true });
+    assert.equal(res.reliability_record_id, undefined);
+    assert.match(res.response_hash ?? "", /^0x[a-f0-9]{64}$/);
+  });
+
+  test("getExternalX402Reliability reads aggregate registry endpoint", async (t) => {
+    const original = globalThis.fetch;
+    let seenUrl = "";
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      seenUrl = req.url;
+      assert.equal(req.method, "GET");
+      return new Response(
+        JSON.stringify({
+          trust_level: "client_observed",
+          count: 1,
+          note: "client-observed reliability evidence, not seller-signed receipts",
+          services: [],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }) as typeof fetch;
+    t.after(() => void (globalThis.fetch = original));
+
+    const res = await new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: false,
+      registryUrl: REGISTRY_URL,
+    }).getExternalX402Reliability({
+      source: "agentic.market",
+      service_id: "mock-service",
+      url: EXT_URL,
+      limit: 5,
+    });
+
+    assert.equal(res.trust_level, "client_observed");
+    assert.match(seenUrl, /\/v1\/reliability\/external-x402\?/);
+    assert.match(seenUrl, /source=agentic\.market/);
+    assert.match(seenUrl, /service_id=mock-service/);
+    assert.match(seenUrl, /limit=5/);
+    assert.match(seenUrl, /url=https%3A%2F%2Fapi\.example\.com%2Fx402%2Fmock/);
   });
 });
 

@@ -28,6 +28,10 @@ import {
   createClaimVerifyHandler,
 } from "./routes/claim.js";
 import {
+  createListExternalX402ReliabilityHandler,
+  createSubmitExternalX402ReliabilityHandler,
+} from "./routes/external-x402-reliability.js";
+import {
   createListingsLookupHandler,
   createPublishListingHandler,
   PublishRateLimiter,
@@ -111,6 +115,18 @@ const PUBLIC_ROUTES = [
   },
   {
     method: "POST",
+    path: "/v1/reliability/external-x402",
+    description:
+      "Submit a client-observed reliability record for a third-party x402 endpoint.",
+  },
+  {
+    method: "GET",
+    path: "/v1/reliability/external-x402",
+    description:
+      "List client-observed reliability aggregates for third-party x402 endpoints.",
+  },
+  {
+    method: "POST",
     path: "/v1/rate",
     description: "Consume a rating token and record stars + comment.",
   },
@@ -172,6 +188,8 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   // /v1/receipts POST runs ECDSA signature recovery on each call — same
   // CPU profile as /v1/listings POST.
   app.use("/v1/receipts", floodGuard);
+  // External reliability writes are unauthenticated client observations.
+  app.use("/v1/reliability/external-x402", floodGuard);
 
   app.get("/", (c) =>
     c.json({
@@ -243,6 +261,14 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   app.post(
     "/v1/receipts",
     createSubmitReceiptHandler({ store, webhookDispatcher }),
+  );
+  app.post(
+    "/v1/reliability/external-x402",
+    createSubmitExternalX402ReliabilityHandler(store),
+  );
+  app.get(
+    "/v1/reliability/external-x402",
+    createListExternalX402ReliabilityHandler(store),
   );
 
   app.post("/telemetry", createTelemetryHandler(store));

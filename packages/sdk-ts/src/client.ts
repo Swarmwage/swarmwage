@@ -1,6 +1,8 @@
 // Swarmwage Agent SDK — main AgentClient
 // License: MIT
 
+import { createHash } from "node:crypto";
+
 import { buildPaidFetch, decodeSettlement } from "./x402.js";
 import { Transport } from "./transport.js";
 import { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
@@ -13,6 +15,7 @@ import {
 } from "./budget.js";
 import { createTelemetry } from "./telemetry.js";
 import { resolveFacilitatorUrl } from "./facilitator.js";
+import { isReliabilityEnabled } from "./reliability.js";
 import { verify } from "./verification.js";
 import {
   HireRefusedError,
@@ -33,6 +36,8 @@ import {
   type JobStatus,
   type PayX402Request,
   type PayX402Response,
+  type ExternalX402ReliabilityQuery,
+  type ExternalX402ReliabilityResponse,
   type Listing,
   type RatingRequest,
   type Reputation,
@@ -82,6 +87,28 @@ function externalX402TelemetryMeta(req: PayX402Request, method: string) {
   };
 }
 
+function stableJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const entries = Object.keys(obj)
+      .filter((key) => obj[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(obj[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function sha256Hex(value: unknown): `0x${string}` {
+  return `0x${createHash("sha256").update(stableJson(value)).digest("hex")}`;
+}
+
 // Used for the default (non-hire) paidFetch that the AgentClient instantiates
 // at construction. The constructor doesn't know per-call price caps, so we
 // pick a generous default (10 USDC = 10_000_000 atomic) — high enough not to
@@ -96,6 +123,8 @@ export interface AgentClientOptions extends WalletConfig {
   budget?: BudgetToken;
   /** Force telemetry on/off. Defaults to env var `AGENT_TELEMETRY`. */
   telemetry?: boolean;
+  /** Force external x402 reliability submission on/off. Defaults to env var `SWARMWAGE_RELIABILITY`. */
+  reliability?: boolean;
   /**
    * Chain to use for x402 payments. Defaults to `"base"` (Base mainnet),
    * matching the production network where Swarmwage is live. Pass
@@ -135,6 +164,7 @@ export class AgentClient {
   private budgetState: BudgetState | null;
   private readonly transport: Transport;
   private readonly telemetry: ReturnType<typeof createTelemetry>;
+  private readonly reliabilityEnabled: boolean;
 
   constructor(opts: AgentClientOptions) {
     this.wallet = createWallet({ privateKey: opts.privateKey });
@@ -165,6 +195,7 @@ export class AgentClient {
       enabled: opts.telemetry,
       agentId: this.wallet.agentId,
     });
+    this.reliabilityEnabled = isReliabilityEnabled(opts.reliability);
   }
 
   // -----------------------------------------------------------------------
@@ -208,6 +239,21 @@ export class AgentClient {
     return this.transport.json<Reputation>(`/v1/agents/${agentId}/reputation`, {
       method: "GET",
     });
+  }
+
+  async getExternalX402Reliability(
+    opts: ExternalX402ReliabilityQuery = {},
+  ): Promise<ExternalX402ReliabilityResponse> {
+    const params = new URLSearchParams();
+    if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+    if (opts.source) params.set("source", opts.source);
+    if (opts.service_id) params.set("service_id", opts.service_id);
+    if (opts.url) params.set("url", opts.url);
+    const qs = params.toString();
+    return this.transport.json<ExternalX402ReliabilityResponse>(
+      `/v1/reliability/external-x402${qs ? `?${qs}` : ""}`,
+      { method: "GET" },
+    );
   }
 
   // -----------------------------------------------------------------------
@@ -451,6 +497,8 @@ export class AgentClient {
     let txHash: string | undefined;
     let settledAtomic: bigint | undefined;
     let data: unknown;
+    const requestHash =
+      req.body !== undefined ? sha256Hex(req.body) : undefined;
     try {
       data = await this.transport.json<unknown>(req.url, {
         method,
@@ -466,10 +514,23 @@ export class AgentClient {
         },
       });
     } catch (err) {
+      const latencyMs = Date.now() - t0;
       this.telemetry.send({
         kind: "x402_call_failed",
         ...telemetryMeta,
         reason: (err as Error).message,
+      });
+      await this.submitExternalX402ReliabilityRecord({
+        ...telemetryMeta,
+        buyer_agent_id: this.agentId,
+        status: err instanceof TransportError && err.status ? err.status : 0,
+        latency_ms: latencyMs,
+        request_hash: requestHash,
+        response_hash: sha256Hex({ error: (err as Error).message }),
+        verifier_kind: "none",
+        verifier_status: "unknown",
+        verifier_checks: {},
+        error: (err as Error).message,
       });
       // A second 402 after the EIP-3009 retry means settlement failed —
       // surface it as InsufficientFunds so the caller can guide funding.
@@ -494,13 +555,30 @@ export class AgentClient {
       recordSpend(this.budgetState, amountPaid);
     }
 
+    const latencyMs = Date.now() - t0;
+    const responseHash = sha256Hex(data);
+    const reliabilityRecordId = await this.submitExternalX402ReliabilityRecord({
+      ...telemetryMeta,
+      buyer_agent_id: this.agentId,
+      status,
+      amount_paid_usdc: amountPaid,
+      tx_hash: txHash as PayX402Response["tx_hash"],
+      latency_ms: latencyMs,
+      request_hash: requestHash,
+      response_hash: responseHash,
+      verifier_kind: "none",
+      verifier_status: "unknown",
+      verifier_checks: {},
+    });
+
     this.telemetry.send({
       kind: "x402_call_complete",
       ...telemetryMeta,
       amount_usdc: amountPaid ?? null,
-      latency_ms: Date.now() - t0,
+      latency_ms: latencyMs,
       status,
       tx_hash: txHash,
+      reliability_record_id: reliabilityRecordId,
     });
 
     return {
@@ -509,8 +587,51 @@ export class AgentClient {
       data,
       tx_hash: txHash as PayX402Response["tx_hash"],
       amount_paid_usdc: amountPaid,
-      latency_ms: Date.now() - t0,
+      reliability_record_id: reliabilityRecordId,
+      request_hash: requestHash,
+      response_hash: responseHash,
+      latency_ms: latencyMs,
     };
+  }
+
+  private async submitExternalX402ReliabilityRecord(record: {
+    buyer_agent_id: AgentId;
+    source?: string;
+    service_id?: string;
+    service_name?: string;
+    endpoint_description?: string;
+    category?: string;
+    pricing_scheme?: string;
+    url: string;
+    method: string;
+    status: number;
+    amount_paid_usdc?: string;
+    tx_hash?: PayX402Response["tx_hash"];
+    latency_ms: number;
+    request_hash?: `0x${string}`;
+    response_hash: `0x${string}`;
+    verifier_kind: "none" | "json" | "custom";
+    verifier_status: "unknown" | "pass" | "fail";
+    verifier_checks: Record<string, boolean>;
+    error?: string;
+  }): Promise<string | undefined> {
+    if (!this.reliabilityEnabled) return undefined;
+    try {
+      const res = await this.transport.json<{ reliability_record_id?: string }>(
+        "/v1/reliability/external-x402",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ts: Date.now(),
+            trust_level: "client_observed",
+            ...record,
+          }),
+        },
+      );
+      return res.reliability_record_id;
+    } catch {
+      return undefined;
+    }
   }
 
   // -----------------------------------------------------------------------

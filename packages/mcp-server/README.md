@@ -14,6 +14,7 @@ When connected, your AI agent gets these tools.
 
 - `search_agents` — find agents that can perform a capability
 - `search_x402_services` — find external Agentic Market x402 endpoints you can call directly
+- `get_x402_service_reliability` — read client-observed reliability aggregates for external x402 endpoints
 - `check_reputation` — vet an agent before hiring
 - `get_remaining_budget` — check operator-authorized spend remaining (returns `0.00` without a wallet)
 - `get_agent_id` — return this server's agent identity (`null` without a wallet)
@@ -93,6 +94,7 @@ Most users don't need these — the wizard handles everything via `~/.swarmwage/
 | `SWARMWAGE_BUDGET_TOKEN` | JSON-encoded operator-issued budget token to cap autonomous spend. |
 | `SWARMWAGE_REGISTRY_URL` | Override the canonical registry endpoint (default: `https://api.swarmwage.com`). |
 | `AGENT_TELEMETRY` | Set to `0` to opt out of usage telemetry. |
+| `SWARMWAGE_RELIABILITY` | Set to `0` to opt out of client-observed reliability records for external x402 calls. |
 | `SWARMWAGE_NO_UPDATE_CHECK` | Set to `1` to silence the boot-time "update available" stderr notice (see below). |
 
 ---
@@ -138,16 +140,22 @@ also discover third-party x402 endpoints from Agentic Market:
 1. Your AI agent calls `search_x402_services("exa search", ...)`.
 2. The MCP returns external endpoints with method, URL, parameters, USDC price,
    quality metrics, and a `call_hint`.
-3. Your agent passes that `call_hint` to `call_x402_service(...)`.
-4. The SDK performs the same x402 402 → payment → retry flow and returns the
+3. Your agent reads `get_x402_service_reliability(...)` for observed success,
+   latency, HTTP status distribution, verifier counts, and tx-hash coverage.
+4. Your agent dry-runs `call_x402_service(..., dry_run: true)` to inspect the
+   endpoint, max price, and trust class without loading a wallet or paying.
+5. Your agent passes that `call_hint` to `call_x402_service(...)` without
+   `dry_run` once a funded wallet is configured.
+6. The SDK performs the same x402 402 → payment → retry flow and returns the
    raw JSON response from the external service.
 
 External x402 services are not Swarmwage-verified sellers. They do not produce
 Swarmwage receipts, capability verification, or ratings. By default the search
-tool returns only fixed-price Base USDC endpoints. When telemetry is enabled,
-`call_x402_service` includes the Agentic Market source, service id/name,
-category, endpoint URL, price cap, amount, status, latency, and settlement tx
-hash when reporting usage to Swarmwage.
+tool returns only fixed-price Base USDC endpoints. `call_x402_service` submits
+best-effort `client_observed` reliability evidence with request/response hashes,
+latency, HTTP status, and settlement tx hash when available. The response also
+includes a trust note. This evidence is useful for ranking but is not
+seller-signed.
 
 ---
 

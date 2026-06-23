@@ -11,6 +11,8 @@ import {
   AgentClient,
   type AgentId,
   type BudgetToken,
+  type ExternalX402ReliabilityQuery,
+  type ExternalX402ReliabilityResponse,
   type Hex,
   type Reputation,
   type SearchRequest,
@@ -87,13 +89,33 @@ export async function runServer(): Promise<void> {
     return searchAgenticMarketServices(req);
   }
 
+  async function directExternalX402Reliability(
+    req: ExternalX402ReliabilityQuery,
+  ): Promise<ExternalX402ReliabilityResponse> {
+    const params = new URLSearchParams();
+    if (req.limit !== undefined) params.set("limit", String(req.limit));
+    if (req.source) params.set("source", req.source);
+    if (req.service_id) params.set("service_id", req.service_id);
+    if (req.url) params.set("url", req.url);
+    const qs = params.toString();
+    const res = await fetch(
+      `${REGISTRY_URL}/v1/reliability/external-x402${qs ? `?${qs}` : ""}`,
+    );
+    if (!res.ok) {
+      throw new Error(
+        `registry reliability lookup failed: ${res.status} ${res.statusText}`,
+      );
+    }
+    return (await res.json()) as ExternalX402ReliabilityResponse;
+  }
+
   // Lazy wallet + client load — kicked off in the background AFTER the
   // transport handshake so `tools/list` is never blocked by file I/O or viem
   // wallet client init. Calling LLMs see the tool catalog immediately;
   // wallet-only tools (hire_agent, publish_listing, etc.) await this promise
   // at call time and the first call waits ~50-200ms once. Read-only tools
-  // (search_agents, search_x402_services, check_reputation,
-  // list_capabilities, get_agent_id with null fallback,
+  // (search_agents, search_x402_services, get_x402_service_reliability,
+  // check_reputation, list_capabilities, get_agent_id with null fallback,
   // get_remaining_budget with '0.00' fallback) never wait.
   //
   // This eliminates the race condition where slow MCP-host harnesses close
@@ -133,6 +155,7 @@ export async function runServer(): Promise<void> {
     directSearch,
     directReputation,
     searchExternalX402Services,
+    directExternalX402Reliability,
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) =>
     handleToolCall(request.params),
@@ -159,7 +182,7 @@ export async function runServer(): Promise<void> {
     } else {
       process.stderr.write(
         `swarmwage-mcp v${VERSION} lookup-only (no wallet)\n` +
-          `  Enabled: search_agents, search_x402_services, list_capabilities, check_reputation, get_remaining_budget, get_agent_id\n` +
+          `  Enabled: search_agents, search_x402_services, get_x402_service_reliability, list_capabilities, check_reputation, get_remaining_budget, get_agent_id\n` +
           `  Setup wallet: npx @swarmwage/mcp\n`,
       );
     }

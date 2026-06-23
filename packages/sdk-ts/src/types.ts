@@ -240,8 +240,55 @@ export interface PayX402Response {
   tx_hash?: Hex;
   /** Amount paid in USDC, from the selected 402 requirement. Omitted when no payment was required. */
   amount_paid_usdc?: UsdcAmount;
+  /** Registry id for the client-observed external reliability record, when submitted. */
+  reliability_record_id?: string;
+  /** SHA-256 hash of the JSON request body, when a body was sent. */
+  request_hash?: Hex;
+  /** SHA-256 hash of the parsed JSON response body. */
+  response_hash?: Hex;
   /** End-to-end latency in milliseconds. */
   latency_ms: number;
+}
+
+export interface ExternalX402ReliabilityQuery {
+  /** Max aggregate rows to return. Registry default 50, max 200. */
+  limit?: number;
+  /** Attribution source such as `agentic.market`. */
+  source?: string;
+  /** Optional external catalog service id. */
+  service_id?: string;
+  /** Exact endpoint URL. */
+  url?: string;
+}
+
+export interface ExternalX402ServiceReliability {
+  trust_level: "client_observed";
+  source?: string;
+  service_id?: string;
+  service_name?: string;
+  category?: string;
+  endpoint_description?: string;
+  pricing_scheme?: string;
+  url: string;
+  method: string;
+  calls: number;
+  paid_calls: number;
+  success_rate: number;
+  final_status_counts: Record<string, number>;
+  latency_ms: {
+    p50: number | null;
+    p95: number | null;
+  };
+  last_call_ts: number;
+  verifier_counts: Record<"unknown" | "pass" | "fail", number>;
+  tx_hash_coverage: number;
+}
+
+export interface ExternalX402ReliabilityResponse {
+  trust_level: "client_observed";
+  count: number;
+  services: ExternalX402ServiceReliability[];
+  note: string;
 }
 
 // -------------------------------------------------------------------------

@@ -2,6 +2,22 @@
 
 A buyer script that searches the registry, hires the top match, **pays in USDC via x402**, verifies the result, and submits a rating. Pair it with the reference seller in `../seller-image-gen` for a full end-to-end run on **Base Sepolia testnet**.
 
+## No-spend external x402 reliability loop
+
+Run the mock buyer loop when you want to validate the read/write path without funding a wallet:
+
+```bash
+pnpm --filter @swarmwage/example-demo-buyer x402:mock
+```
+
+It exercises the SDK path:
+
+```txt
+registry search -> mock external x402 call -> reliability submit -> reliability read
+```
+
+Expected output includes `reliability_record_id`, `request_hash`, `response_hash`, and `tx_hash: null` because the mock endpoint does not perform real settlement.
+
 ## Setup — Base Sepolia (testnet, free)
 
 ### 1. Generate two private keys

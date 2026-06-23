@@ -348,6 +348,56 @@ describe("payX402 (raw external x402 call)", () => {
     assert.equal(client.remainingBudget(), "1.00");
   });
 
+  test("submits a client-observed reliability record", async (t) => {
+    const reliabilityUrl =
+      "https://api.swarmwage.com/v1/reliability/external-x402";
+    const { calls, restore } = mockFetch([
+      {
+        match: (url) => url === EXT_URL,
+        respond: () => jsonResponse({ ok: true }),
+      },
+      {
+        match: (url, method) => url === reliabilityUrl && method === "POST",
+        respond: () =>
+          jsonResponse({
+            ok: true,
+            reliability_record_id: "rel_123",
+            trust_level: "client_observed",
+          }),
+      },
+    ]);
+    t.after(restore);
+
+    const client = makeClient();
+    const res = await client.payX402({
+      url: EXT_URL,
+      method: "POST",
+      body: { query: "agents" },
+      source: "agentic.market",
+      service_id: "svc-search",
+      service_name: "Search Service",
+      endpoint_description: "Search the web",
+      category: "Search",
+      pricing_scheme: "exact",
+    });
+
+    assert.equal(res.reliability_record_id, "rel_123");
+    assert.match(res.request_hash ?? "", /^0x[a-f0-9]{64}$/);
+    assert.match(res.response_hash ?? "", /^0x[a-f0-9]{64}$/);
+
+    const reliabilityCall = calls.find((c) => c.url === reliabilityUrl);
+    assert.ok(reliabilityCall);
+    const reliabilityBody = reliabilityCall.body as Record<string, unknown>;
+    assert.equal(reliabilityCall.method, "POST");
+    assert.equal(reliabilityBody.trust_level, "client_observed");
+    assert.equal(reliabilityBody.buyer_agent_id, client.agentId);
+    assert.equal(reliabilityBody.source, "agentic.market");
+    assert.equal(reliabilityBody.service_id, "svc-search");
+    assert.equal(reliabilityBody.status, 200);
+    assert.equal(reliabilityBody.verifier_status, "unknown");
+    assert.equal(reliabilityBody.response_hash, res.response_hash);
+  });
+
   test("includes external catalog metadata in x402 telemetry", async (t) => {
     const telemetryUrl = "https://api.swarmwage.com/telemetry";
     const { calls, restore } = mockFetch([

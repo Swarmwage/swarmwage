@@ -16,6 +16,8 @@ import type {
   ClaimChallenge,
   HireRecord,
   RatingRecord,
+  ExternalX402ReliabilityRecord,
+  ExternalX402ServiceReliability,
   ReceiptRecord,
   RegistryStore,
   TelemetryRecord,
@@ -41,6 +43,9 @@ export class MemoryStore implements RegistryStore {
   private claims = new Map<string, ClaimChallenge>(); // key: verification_hash
   private telemetry: TelemetryRecord[] = [];
   private receipts = new Map<string, { id: string; record: ReceiptRecord }>(); // key: `${hire_id}:${agent_id}`
+  private externalX402Reliability: Array<
+    ExternalX402ReliabilityRecord & { id: string }
+  > = [];
 
   async upsertAgent(agentId: AgentId): Promise<void> {
     if (!this.agents.has(agentId)) {
@@ -340,7 +345,105 @@ export class MemoryStore implements RegistryStore {
     }
   }
 
+  async appendExternalX402ReliabilityRecord(
+    record: ExternalX402ReliabilityRecord,
+  ): Promise<{ id: string }> {
+    const id = randomUUID();
+    this.externalX402Reliability.push({ ...record, id });
+    if (this.externalX402Reliability.length > 50_000) {
+      this.externalX402Reliability.splice(
+        0,
+        this.externalX402Reliability.length - 50_000,
+      );
+    }
+    return { id };
+  }
+
+  async listExternalX402ServiceReliability(
+    opts: {
+      limit?: number;
+      source?: string;
+      service_id?: string;
+      url?: string;
+    } = {},
+  ): Promise<ExternalX402ServiceReliability[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const groups = new Map<
+      string,
+      Array<ExternalX402ReliabilityRecord & { id: string }>
+    >();
+    for (const record of this.externalX402Reliability) {
+      if (opts.source && record.source !== opts.source) continue;
+      if (opts.service_id && record.service_id !== opts.service_id) continue;
+      if (opts.url && record.url !== opts.url) continue;
+      const key = `${record.source ?? ""}:${record.service_id ?? ""}:${record.method}:${record.url}`;
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+
+    return Array.from(groups.values())
+      .map(aggregateExternalX402Group)
+      .sort((a, b) => b.last_call_ts - a.last_call_ts)
+      .slice(0, limit);
+  }
+
   private listingKey(agentId: AgentId, capability: CapabilityId): string {
     return `${agentId}:${capability}`;
   }
+}
+
+function aggregateExternalX402Group(
+  records: Array<ExternalX402ReliabilityRecord & { id: string }>,
+): ExternalX402ServiceReliability {
+  const latest = records.reduce((a, b) => (b.ts > a.ts ? b : a));
+  const final_status_counts: Record<string, number> = {};
+  const verifier_counts: Record<"unknown" | "pass" | "fail", number> = {
+    unknown: 0,
+    pass: 0,
+    fail: 0,
+  };
+  let paid = 0;
+  let ok = 0;
+  let withTx = 0;
+  const latencies: number[] = [];
+  for (const record of records) {
+    final_status_counts[String(record.status)] =
+      (final_status_counts[String(record.status)] ?? 0) + 1;
+    verifier_counts[record.verifier_status] += 1;
+    if (record.amount_paid_usdc) paid += 1;
+    if (!record.error && record.status >= 200 && record.status < 400) ok += 1;
+    if (record.tx_hash) withTx += 1;
+    latencies.push(record.latency_ms);
+  }
+  latencies.sort((a, b) => a - b);
+
+  return {
+    trust_level: "client_observed",
+    source: latest.source,
+    service_id: latest.service_id,
+    service_name: latest.service_name,
+    category: latest.category,
+    endpoint_description: latest.endpoint_description,
+    pricing_scheme: latest.pricing_scheme,
+    url: latest.url,
+    method: latest.method,
+    calls: records.length,
+    paid_calls: paid,
+    success_rate: records.length === 0 ? 0 : ok / records.length,
+    final_status_counts,
+    latency_ms: {
+      p50: percentile(latencies, 0.5),
+      p95: percentile(latencies, 0.95),
+    },
+    last_call_ts: latest.ts,
+    verifier_counts,
+    tx_hash_coverage: records.length === 0 ? 0 : withTx / records.length,
+  };
+}
+
+function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const idx = Math.ceil(values.length * p) - 1;
+  return values[Math.min(Math.max(idx, 0), values.length - 1)] ?? null;
 }

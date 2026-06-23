@@ -10,6 +10,8 @@ import {
   AgentClient,
   InsufficientFundsError,
   type AgentId,
+  type ExternalX402ReliabilityQuery,
+  type ExternalX402ReliabilityResponse,
   type Listing,
   type Reputation,
   type SearchRequest,
@@ -51,7 +53,7 @@ function errResult(message: string): ToolResult {
 
 function walletRequired(toolName: string): ToolResult {
   return errResult(
-    `'${toolName}' requires a wallet. Run 'npx @swarmwage/mcp' once in your terminal to set one up (test wallet or paste your own key).\n\nDetails: ${SETUP_URL}\n\nIn lookup-only mode you can still use: search_agents, search_x402_services, check_reputation, get_remaining_budget, get_agent_id.`,
+    `'${toolName}' requires a wallet. Run 'npx @swarmwage/mcp' once in your terminal to set one up (test wallet or paste your own key).\n\nDetails: ${SETUP_URL}\n\nIn lookup-only mode you can still use: search_agents, search_x402_services, get_x402_service_reliability, check_reputation, get_remaining_budget, get_agent_id.`,
   );
 }
 
@@ -106,6 +108,10 @@ export interface ToolHandlerDeps {
   searchExternalX402Services: (
     req: AgenticMarketSearchRequest,
   ) => Promise<AgenticMarketSearchResponse>;
+  /** Direct registry reliability lookup. Read-only, no wallet required. */
+  directExternalX402Reliability: (
+    req: ExternalX402ReliabilityQuery,
+  ) => Promise<ExternalX402ReliabilityResponse>;
 }
 
 export interface CallToolParams {
@@ -119,6 +125,7 @@ export function createToolHandler(deps: ToolHandlerDeps) {
     directSearch,
     directReputation,
     searchExternalX402Services,
+    directExternalX402Reliability,
   } = deps;
 
   return async function handleToolCall(
@@ -173,6 +180,16 @@ export function createToolHandler(deps: ToolHandlerDeps) {
             max_price_usdc: args.max_price_usdc as string | undefined,
             limit: args.limit as number | undefined,
             include_dynamic_pricing: Boolean(args.include_dynamic_pricing ?? false),
+          });
+          return ok(response);
+        }
+
+        case "get_x402_service_reliability": {
+          const response = await directExternalX402Reliability({
+            source: args.source as string | undefined,
+            service_id: args.service_id as string | undefined,
+            url: args.url as string | undefined,
+            limit: args.limit as number | undefined,
           });
           return ok(response);
         }
@@ -260,27 +277,57 @@ export function createToolHandler(deps: ToolHandlerDeps) {
         }
 
         case "call_x402_service": {
-          const client = await ensureClient();
-          if (!client) return walletRequired("call_x402_service");
-          const response = await client.payX402({
+          const method = (args.method as string | undefined) ?? (args.body ? "POST" : "GET");
+          const externalCallPlan = {
             url: String(args.url),
-            method: args.method as string | undefined,
-            body: args.body,
-            headers: args.headers as Record<string, string> | undefined,
+            method,
+            max_price_usdc: (args.max_price_usdc as string | undefined) ?? "1.00",
             source: args.source as string | undefined,
             service_id: args.service_id as string | undefined,
             service_name: args.service_name as string | undefined,
             endpoint_description: args.endpoint_description as string | undefined,
             category: args.category as string | undefined,
             pricing_scheme: args.pricing_scheme as string | undefined,
-            max_price_usdc: args.max_price_usdc as string | undefined,
+            trust_level: "client_observed",
+            trust_note:
+              "External x402 reliability evidence is client-observed by buyer SDK/MCP calls. A dry run does not call the endpoint, does not pay, and does not create reliability evidence.",
+          };
+          if (args.dry_run === true) {
+            return ok({
+              dry_run: true,
+              requires_wallet_for_real_call: true,
+              would_call: externalCallPlan,
+              next_step:
+                "If the endpoint, price cap, and trust class are acceptable, repeat call_x402_service with dry_run=false (or omit dry_run) after configuring a funded wallet.",
+            });
+          }
+          const client = await ensureClient();
+          if (!client) return walletRequired("call_x402_service");
+          const response = await client.payX402({
+            url: externalCallPlan.url,
+            method,
+            body: args.body,
+            headers: args.headers as Record<string, string> | undefined,
+            source: externalCallPlan.source,
+            service_id: externalCallPlan.service_id,
+            service_name: externalCallPlan.service_name,
+            endpoint_description: externalCallPlan.endpoint_description,
+            category: externalCallPlan.category,
+            pricing_scheme: externalCallPlan.pricing_scheme,
+            max_price_usdc: externalCallPlan.max_price_usdc,
           });
           return ok({
             url: response.url,
             status: response.status,
             data: response.data,
+            trust_level: "client_observed",
+            trust_note:
+              "External x402 reliability evidence is client-observed by this buyer SDK/MCP call. It is not a seller-signed Swarmwage receipt, not capability verification, and not a guarantee from the external provider.",
             tx_hash: response.tx_hash,
             amount_paid_usdc: response.amount_paid_usdc,
+            reliability_record_id: response.reliability_record_id,
+            request_hash: response.request_hash,
+            response_hash: response.response_hash,
             latency_ms: response.latency_ms,
             remaining_budget_usdc: client.remainingBudget(),
           });

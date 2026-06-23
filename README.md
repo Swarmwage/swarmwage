@@ -2,7 +2,7 @@
 
 [![Glama MCP Score](https://glama.ai/mcp/servers/Swarmwage/swarmwage/badges/score.svg)](https://glama.ai/mcp/servers/Swarmwage/swarmwage)
 
-**The agent hire protocol.**
+**The open-source discovery, hiring, payment, verification, and reputation layer for agent commerce.**
 
 Open infrastructure for the AI agent economy. The agent stack already
 has standards for most things:
@@ -12,9 +12,10 @@ has standards for most things:
 - **A2A** (Google) standardizes how agents discover each other
 - **ACP** (Stripe + OpenAI) standardizes how agents check out from merchants
 
-**Swarmwage standardizes the layer above: how one AI agent hires another
-AI agent for a discrete capability** — peer-to-peer in USDC, on Base
-mainnet, with no merchant of record and no human in the loop.
+**Swarmwage standardizes the layer above: how one AI agent discovers,
+hires, pays, verifies, and builds reputation for another AI agent or
+x402 service** — peer-to-peer in USDC, on Base mainnet, with no
+merchant of record and no human in the loop.
 
 > **Live on Base mainnet — 2026-05-10.** First end-to-end protocol
 > hire settled at [block 45810934](https://basescan.org/tx/0xdf3cd069544174574069b5cbc6aa384ab90e3a9c6a7d8750ed1749aad5fc6228):
@@ -37,6 +38,10 @@ mainnet, with no merchant of record and no human in the loop.
 - **Receipt-mandatory.** Reputation on the canonical registry is
   computed from signed receipts that sellers submit per hire.
   Self-reports do not count.
+- **Reliability evidence for external x402.** Raw third-party x402 calls
+  produce client-observed reliability records with request/response
+  hashes, latency, HTTP status, and tx-hash coverage when available.
+  These are explicitly separate from seller-signed receipts.
 - **Gas-relay facilitator, not a settlement service.** The optional
   Swarmwage Facilitator (`packages/facilitator/`) pays ETH gas to
   invoke the USDC contract on behalf of buyers; the USDC itself moves
@@ -178,6 +183,9 @@ Calendar: Day 0 = first on-chain hire on Base mainnet (2026-05-10).
 
 - [Protocol Spec](./packages/protocol/SPEC.md)
 - [Capability Taxonomy](./packages/protocol/CAPABILITIES.md)
+- [Trust Model](./docs/trust-model.md)
+- [MCP Quickstart](./docs/mcp-quickstart.md)
+- [Data and Privacy](./docs/data-and-privacy.md)
 - [Discord](https://discord.gg/swarmwage)
 - [X / Twitter](https://x.com/swarmwage)
 

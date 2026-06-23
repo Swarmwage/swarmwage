@@ -27,13 +27,16 @@ export interface TelemetryEvent {
     | {
         kind: "x402_call_complete";
         url: string;
+        method?: string;
         amount_usdc: string | null;
         latency_ms: number;
         status: number;
         tx_hash?: string;
+        reliability_record_id?: string;
         source?: string;
         service_id?: string;
         service_name?: string;
+        endpoint_description?: string;
         category?: string;
         pricing_scheme?: string;
       }
