@@ -347,4 +347,58 @@ describe("payX402 (raw external x402 call)", () => {
     assert.equal(res.amount_paid_usdc, undefined);
     assert.equal(client.remainingBudget(), "1.00");
   });
+
+  test("includes external catalog metadata in x402 telemetry", async (t) => {
+    const telemetryUrl = "https://api.swarmwage.com/telemetry";
+    const { calls, restore } = mockFetch([
+      {
+        match: (url) => url === EXT_URL,
+        respond: () => jsonResponse({ ok: true }),
+      },
+      {
+        match: (url, method) => url === telemetryUrl && method === "POST",
+        respond: () => new Response(null, { status: 204 }),
+      },
+    ]);
+    t.after(restore);
+
+    const client = new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: true,
+    });
+    await client.payX402({
+      url: EXT_URL,
+      method: "POST",
+      body: { query: "agents" },
+      max_price_usdc: "0.02",
+      source: "agentic.market",
+      service_id: "exa-ai",
+      service_name: "Exa",
+      endpoint_description: "Search the web",
+      category: "Search",
+      pricing_scheme: "exact",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const telemetryEvents = calls
+      .filter((c) => c.url === telemetryUrl)
+      .map((c) => c.body as { event: Record<string, unknown> });
+    assert.equal(telemetryEvents.length, 2);
+    assert.deepEqual(
+      telemetryEvents.map((e) => e.event.kind),
+      ["x402_call", "x402_call_complete"],
+    );
+    for (const { event } of telemetryEvents) {
+      assert.equal(event.url, EXT_URL);
+      assert.equal(event.method, "POST");
+      assert.equal(event.max_price_usdc, "0.02");
+      assert.equal(event.source, "agentic.market");
+      assert.equal(event.service_id, "exa-ai");
+      assert.equal(event.service_name, "Exa");
+      assert.equal(event.endpoint_description, "Search the web");
+      assert.equal(event.category, "Search");
+      assert.equal(event.pricing_scheme, "exact");
+    }
+  });
 });

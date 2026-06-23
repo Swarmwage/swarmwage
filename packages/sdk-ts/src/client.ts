@@ -68,6 +68,20 @@ function atomicToUsdcString(atomic: bigint): string {
   return frac ? `${intPart}.${frac}` : intPart;
 }
 
+function externalX402TelemetryMeta(req: PayX402Request, method: string) {
+  return {
+    url: req.url,
+    method,
+    max_price_usdc: req.max_price_usdc,
+    source: req.source,
+    service_id: req.service_id,
+    service_name: req.service_name,
+    endpoint_description: req.endpoint_description,
+    category: req.category,
+    pricing_scheme: req.pricing_scheme,
+  };
+}
+
 // Used for the default (non-hire) paidFetch that the AgentClient instantiates
 // at construction. The constructor doesn't know per-call price caps, so we
 // pick a generous default (10 USDC = 10_000_000 atomic) — high enough not to
@@ -429,7 +443,8 @@ export class AgentClient {
     });
 
     const method = req.method ?? (req.body !== undefined ? "POST" : "GET");
-    this.telemetry.send({ kind: "x402_call", url: req.url });
+    const telemetryMeta = externalX402TelemetryMeta(req, method);
+    this.telemetry.send({ kind: "x402_call", ...telemetryMeta });
 
     const t0 = Date.now();
     let status = 0;
@@ -453,7 +468,7 @@ export class AgentClient {
     } catch (err) {
       this.telemetry.send({
         kind: "x402_call_failed",
-        url: req.url,
+        ...telemetryMeta,
         reason: (err as Error).message,
       });
       // A second 402 after the EIP-3009 retry means settlement failed —
@@ -481,10 +496,11 @@ export class AgentClient {
 
     this.telemetry.send({
       kind: "x402_call_complete",
-      url: req.url,
+      ...telemetryMeta,
       amount_usdc: amountPaid ?? null,
       latency_ms: Date.now() - t0,
       status,
+      tx_hash: txHash,
     });
 
     return {

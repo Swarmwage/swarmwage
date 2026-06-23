@@ -16,6 +16,7 @@ import {
   type SearchResponse,
 } from "@swarmwage/agent-sdk";
 
+import type { AgenticMarketSearchResponse } from "../agentic-market.js";
 import { createToolHandler, type ToolHandlerDeps } from "../handlers.js";
 import { tools } from "../tools.js";
 
@@ -41,12 +42,75 @@ const EMPTY_SEARCH: SearchResponse = {
   total_distinct_capabilities: 2,
 };
 
+const EXTERNAL_X402_SEARCH: AgenticMarketSearchResponse = {
+  source: "agentic.market",
+  query: "exa",
+  total_services_reported: 1,
+  scanned_services: 1,
+  filters: {
+    network: "Base",
+    currency: "USDC",
+    pricing_scheme: "exact",
+    max_price_usdc: "0.02",
+  },
+  note: "external",
+  endpoints: [
+    {
+      source: "agentic.market",
+      service_id: "exa-ai",
+      service_name: "Exa",
+      service_description: "AI-powered web search",
+      category: "Search",
+      domain: "exa.ai",
+      provider_url: "https://exa.ai",
+      integration_type: "1P",
+      endpoint: {
+        url: "https://api.exa.ai/search",
+        method: "POST",
+        description: "Search the web",
+        pricing: {
+          amount_usdc: "0.007",
+          scheme: "exact",
+          network: "Base",
+          currency: "USDC",
+        },
+        parameters: [
+          {
+            group: "body",
+            name: "query",
+            type: "string",
+            description: "",
+            required: false,
+          },
+        ],
+        quality: {
+          last_30d_calls: 2287,
+          last_30d_unique_payers: 107,
+        },
+      },
+      call_hint: {
+        tool: "call_x402_service",
+        url: "https://api.exa.ai/search",
+        method: "POST",
+        max_price_usdc: "0.007",
+        source: "agentic.market",
+        service_id: "exa-ai",
+        service_name: "Exa",
+        endpoint_description: "Search the web",
+        category: "Search",
+        pricing_scheme: "exact",
+      },
+    },
+  ],
+};
+
 function makeDeps(overrides: Partial<ToolHandlerDeps> = {}): ToolHandlerDeps {
   return {
     // Lookup-only by default — the most common cold-install state.
     ensureClient: async () => undefined,
     directSearch: async () => EMPTY_SEARCH,
     directReputation: async () => SAMPLE_REPUTATION,
+    searchExternalX402Services: async () => EXTERNAL_X402_SEARCH,
     ...overrides,
   };
 }
@@ -134,6 +198,61 @@ describe("list_capabilities", () => {
   });
 });
 
+describe("search_x402_services", () => {
+  test("searches external x402 services without requiring a wallet", async () => {
+    let seen: Record<string, unknown> | null = null;
+    const handler = createToolHandler(
+      makeDeps({
+        searchExternalX402Services: async (req) => {
+          seen = req as unknown as Record<string, unknown>;
+          return EXTERNAL_X402_SEARCH;
+        },
+      }),
+    );
+
+    const res = await handler({
+      name: "search_x402_services",
+      arguments: {
+        query: "exa",
+        category: "Search",
+        max_price_usdc: "0.02",
+        limit: 5,
+      },
+    });
+
+    assert.ok(!res.isError);
+    assert.deepEqual(seen, {
+      query: "exa",
+      category: "Search",
+      max_price_usdc: "0.02",
+      limit: 5,
+      include_dynamic_pricing: false,
+    });
+    const body = parseText(res) as AgenticMarketSearchResponse;
+    assert.equal(body.endpoints[0]!.source, "agentic.market");
+    assert.equal(body.endpoints[0]!.call_hint.tool, "call_x402_service");
+  });
+
+  test("does not load the wallet for read-only external discovery", async () => {
+    const handler = createToolHandler(
+      makeDeps({
+        ensureClient: async () => {
+          throw new Error("wallet load should not run");
+        },
+      }),
+    );
+
+    const res = await handler({
+      name: "search_x402_services",
+      arguments: { query: "exa" },
+    });
+
+    assert.ok(!res.isError);
+    const body = parseText(res) as AgenticMarketSearchResponse;
+    assert.equal(body.endpoints.length, 1);
+  });
+});
+
 describe("lookup-only mode (no wallet)", () => {
   test("check_reputation falls back to directReputation", async () => {
     let called = false;
@@ -173,6 +292,7 @@ describe("lookup-only mode (no wallet)", () => {
     "update_listing",
     "list_my_listings",
     "get_my_receipts",
+    "call_x402_service",
   ]) {
     test(`${name} returns the wallet-required error`, async () => {
       const handler = createToolHandler(makeDeps());
@@ -239,6 +359,57 @@ describe("wallet mode", () => {
     assert.equal(res.isError, true);
     assert.match(res.content[0]!.text, /^\[E503\] registry search failed: 503/);
   });
+
+  test("call_x402_service passes external catalog metadata to the SDK", async () => {
+    let seen: Record<string, unknown> | null = null;
+    const client = {
+      payX402: async (req: Record<string, unknown>) => {
+        seen = req;
+        return {
+          url: req.url,
+          status: 200,
+          data: { ok: true },
+          amount_paid_usdc: "0.01",
+          latency_ms: 12,
+        };
+      },
+      remainingBudget: () => "0.99",
+    } as unknown as AgentClient;
+    const handler = createToolHandler(
+      makeDeps({ ensureClient: async () => client }),
+    );
+
+    const res = await handler({
+      name: "call_x402_service",
+      arguments: {
+        url: "https://api.exa.ai/search",
+        method: "POST",
+        body: { query: "swarmwage" },
+        max_price_usdc: "0.02",
+        source: "agentic.market",
+        service_id: "exa-ai",
+        service_name: "Exa",
+        endpoint_description: "Search the web",
+        category: "Search",
+        pricing_scheme: "exact",
+      },
+    });
+
+    assert.ok(!res.isError);
+    assert.deepEqual(seen, {
+      url: "https://api.exa.ai/search",
+      method: "POST",
+      body: { query: "swarmwage" },
+      headers: undefined,
+      source: "agentic.market",
+      service_id: "exa-ai",
+      service_name: "Exa",
+      endpoint_description: "Search the web",
+      category: "Search",
+      pricing_scheme: "exact",
+      max_price_usdc: "0.02",
+    });
+  });
 });
 
 describe("tool catalog", () => {
@@ -265,6 +436,7 @@ describe("tool catalog", () => {
       "list_my_listings",
       "get_my_receipts",
       "list_capabilities",
+      "search_x402_services",
       "call_x402_service",
     ];
     for (const name of dispatched) {

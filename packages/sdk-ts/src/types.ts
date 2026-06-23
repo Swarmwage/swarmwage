@@ -212,6 +212,17 @@ export interface PayX402Request {
   /** Extra request headers merged onto the request. */
   headers?: Record<string, string>;
   /**
+   * Optional attribution metadata for third-party x402 catalogs. This is
+   * telemetry-only: it does not affect payment signing, settlement, or the
+   * request sent to the external service.
+   */
+  source?: string;
+  service_id?: string;
+  service_name?: string;
+  endpoint_description?: string;
+  category?: string;
+  pricing_scheme?: string;
+  /**
    * Willingness-to-pay cap in USDC (decimal string, e.g. "0.05"). The SDK
    * refuses to sign a payment exceeding this. Defaults to "1.00".
    */

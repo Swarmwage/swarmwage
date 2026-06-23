@@ -196,6 +196,40 @@ export const tools: Tool[] = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "search_x402_services",
+    description:
+      "Search Agentic Market for third-party x402-enabled HTTP endpoints your agent can pay/call directly with `call_x402_service`. Use this when Swarmwage-native `search_agents` has no suitable seller, or when you need a raw external API/service (web search, data enrichment, inference gateway, media API, etc.). Read-only, no wallet required.\n\nIMPORTANT: returned services are EXTERNAL x402 endpoints, not Swarmwage-verified sellers. They do not have Swarmwage receipts, capability verification, or ratings. The response includes a `call_hint` containing the exact `url`, `method`, and `max_price_usdc` to pass to `call_x402_service`. By default this tool returns only Base USDC endpoints with exact fixed pricing, because those are the safest to pay from a Swarmwage wallet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Search text, e.g. 'exa search', 'email enrichment', 'stock quote', 'screenshot', 'transcription'. Omit to browse top services.",
+        },
+        category: {
+          type: "string",
+          description:
+            "Optional Agentic Market category filter such as Search, Data, Inference, Media, Social, Infra, Storage, Travel, or Trading.",
+        },
+        max_price_usdc: {
+          type: "string",
+          description:
+            "Optional fixed-price ceiling in USDC decimal string. Endpoints priced above this are omitted.",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum endpoints to return. Default 10, max 25.",
+        },
+        include_dynamic_pricing: {
+          type: "boolean",
+          description:
+            "Default false. When true, also include Agentic Market endpoints marked with dynamic `upto` pricing; keep false unless the user explicitly accepts variable pricing.",
+        },
+      },
+    },
+  },
+  {
     name: "call_x402_service",
     description:
       "Pay for and call ANY x402-enabled HTTP endpoint directly from this agent's wallet — including third-party services NOT listed on the Swarmwage registry (e.g. an external x402 catalog). Use this when you already know the exact endpoint URL of a paid service and want to call it with its own native request shape, rather than discovering a Swarmwage seller via search_agents/hire_agent.\n\nDifference from hire_agent: hire_agent targets a Swarmwage-protocol seller (capability + verified output + rating). call_x402_service makes a raw paid HTTP request to an arbitrary x402 URL and returns its raw JSON response — there is no capability verification or rating. The SDK handles the 402 → payment → retry dance, forces payment onto Base, and refuses to pay above max_price_usdc. If the wallet lacks USDC, returns a fund-the-wallet instruction (do NOT substitute another service). Requires a wallet.",
@@ -227,6 +261,36 @@ export const tools: Tool[] = [
           type: "string",
           description:
             "Willingness-to-pay cap per call, USDC decimal string, e.g. '0.05'. The SDK refuses to sign a payment above this. Defaults to '1.00'.",
+        },
+        source: {
+          type: "string",
+          description:
+            "Optional telemetry attribution source, e.g. 'agentic.market'. Pass through the value from search_x402_services.call_hint when present.",
+        },
+        service_id: {
+          type: "string",
+          description:
+            "Optional telemetry attribution service id from search_x402_services.call_hint.",
+        },
+        service_name: {
+          type: "string",
+          description:
+            "Optional telemetry attribution service name from search_x402_services.call_hint.",
+        },
+        endpoint_description: {
+          type: "string",
+          description:
+            "Optional telemetry attribution endpoint description from search_x402_services.call_hint.",
+        },
+        category: {
+          type: "string",
+          description:
+            "Optional telemetry attribution category from search_x402_services.call_hint.",
+        },
+        pricing_scheme: {
+          type: "string",
+          description:
+            "Optional telemetry attribution pricing scheme from search_x402_services.call_hint, e.g. 'exact' or 'upto'.",
         },
       },
       required: ["url"],

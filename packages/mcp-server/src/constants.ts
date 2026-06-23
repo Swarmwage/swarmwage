@@ -2,7 +2,7 @@
 // License: MIT
 
 // keep in sync with package.json
-export const VERSION = "0.4.2";
+export const VERSION = "0.7.1";
 
 export const SETUP_URL =
   "https://github.com/Swarmwage/swarmwage/tree/main/packages/mcp-server#setup";

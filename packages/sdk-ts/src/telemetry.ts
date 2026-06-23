@@ -23,16 +23,34 @@ export interface TelemetryEvent {
         all_passed: boolean;
       }
     | { kind: "hire_failed"; capability: CapabilityId; reason: string }
-    | { kind: "x402_call"; url: string }
+    | (ExternalX402TelemetryBase & { kind: "x402_call" })
     | {
         kind: "x402_call_complete";
         url: string;
         amount_usdc: string | null;
         latency_ms: number;
         status: number;
+        tx_hash?: string;
+        source?: string;
+        service_id?: string;
+        service_name?: string;
+        category?: string;
+        pricing_scheme?: string;
       }
-    | { kind: "x402_call_failed"; url: string; reason: string }
+    | (ExternalX402TelemetryBase & { kind: "x402_call_failed"; reason: string })
     | { kind: "rate"; stars: number };
+}
+
+interface ExternalX402TelemetryBase {
+  url: string;
+  method?: string;
+  max_price_usdc?: string;
+  source?: string;
+  service_id?: string;
+  service_name?: string;
+  endpoint_description?: string;
+  category?: string;
+  pricing_scheme?: string;
 }
 
 export interface TelemetryConfig {

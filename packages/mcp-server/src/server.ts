@@ -17,6 +17,11 @@ import {
   type SearchResponse,
 } from "@swarmwage/agent-sdk";
 
+import {
+  searchAgenticMarketServices,
+  type AgenticMarketSearchRequest,
+  type AgenticMarketSearchResponse,
+} from "./agentic-market.js";
 import { loadWallet } from "./config.js";
 import { VERSION } from "./constants.js";
 import { createToolHandler } from "./handlers.js";
@@ -76,13 +81,20 @@ export async function runServer(): Promise<void> {
     return (await res.json()) as Reputation;
   }
 
+  async function searchExternalX402Services(
+    req: AgenticMarketSearchRequest,
+  ): Promise<AgenticMarketSearchResponse> {
+    return searchAgenticMarketServices(req);
+  }
+
   // Lazy wallet + client load — kicked off in the background AFTER the
   // transport handshake so `tools/list` is never blocked by file I/O or viem
   // wallet client init. Calling LLMs see the tool catalog immediately;
   // wallet-only tools (hire_agent, publish_listing, etc.) await this promise
   // at call time and the first call waits ~50-200ms once. Read-only tools
-  // (search_agents, check_reputation, list_capabilities, get_agent_id with
-  // null fallback, get_remaining_budget with '0.00' fallback) never wait.
+  // (search_agents, search_x402_services, check_reputation,
+  // list_capabilities, get_agent_id with null fallback,
+  // get_remaining_budget with '0.00' fallback) never wait.
   //
   // This eliminates the race condition where slow MCP-host harnesses close
   // their deferred-tool index before our pre-connect setup completes.
@@ -120,6 +132,7 @@ export async function runServer(): Promise<void> {
     ensureClient,
     directSearch,
     directReputation,
+    searchExternalX402Services,
   });
   server.setRequestHandler(CallToolRequestSchema, async (request) =>
     handleToolCall(request.params),
@@ -146,7 +159,7 @@ export async function runServer(): Promise<void> {
     } else {
       process.stderr.write(
         `swarmwage-mcp v${VERSION} lookup-only (no wallet)\n` +
-          `  Enabled: search_agents, list_capabilities, check_reputation, get_remaining_budget, get_agent_id\n` +
+          `  Enabled: search_agents, search_x402_services, list_capabilities, check_reputation, get_remaining_budget, get_agent_id\n` +
           `  Setup wallet: npx @swarmwage/mcp\n`,
       );
     }

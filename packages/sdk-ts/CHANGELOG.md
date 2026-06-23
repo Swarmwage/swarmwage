@@ -7,6 +7,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.7.1] — 2026-06-23
+
+### Added
+
+- `payX402` accepts optional external-catalog attribution fields
+  (`source`, `service_id`, `service_name`, `endpoint_description`,
+  `category`, `pricing_scheme`). These fields are telemetry-only and do not
+  affect request signing, settlement, or the HTTP payload sent to the external
+  x402 service.
+- x402 telemetry now includes method, price cap, attribution metadata, and
+  settlement tx hash when available. This lets Swarmwage measure usage of
+  external x402 endpoints reached through the SDK/MCP without treating them as
+  Swarmwage-verified sellers.
+
 ## [0.7.0] — 2026-06-19
 
 ### Changed
