@@ -17,16 +17,21 @@ export interface RemoteAccountConfig {
   walletSvcUrl: string;
   agentId: string;
   fetchImpl?: typeof fetch;
+  /** Bearer token bound to this wallet. Defaults to env WALLET_SVC_TOKEN. */
+  token?: string;
 }
 
 export function createRemoteAccount(cfg: RemoteAccountConfig): LocalAccount {
   const fetchImpl = cfg.fetchImpl ?? globalThis.fetch;
   const base = cfg.walletSvcUrl.replace(/\/$/, '');
+  const token = cfg.token ?? process.env.WALLET_SVC_TOKEN;
 
   async function call(path: string, body: unknown): Promise<unknown> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetchImpl(`${base}${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
     const text = await res.text();

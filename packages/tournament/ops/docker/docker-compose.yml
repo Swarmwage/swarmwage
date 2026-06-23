@@ -56,6 +56,9 @@ services:
     environment:
       PORT: 7000
       BASE_RPC_URL: https://mainnet.base.org
+      # Auth boundary: tokens.json (per-wallet) mounted via /secrets;
+      # ORCHESTRATOR_TOKEN gates /internal/* fleet reads.
+      ORCHESTRATOR_TOKEN: "${ORCHESTRATOR_TOKEN}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 256m
@@ -84,6 +87,7 @@ services:
     environment:
       WALLET_SVC_URL: http://wallet-svc:7000
       AGENT_IDS: agent_01,agent_02,agent_03,agent_04,agent_05,agent_06,agent_07,agent_08,agent_09,agent_10
+      ORCHESTRATOR_TOKEN: "${ORCHESTRATOR_TOKEN}"
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 256m
@@ -113,6 +117,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_01
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_01}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -128,6 +133,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_02
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_02}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -143,6 +149,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_03
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_03}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -158,6 +165,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_04
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_04}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -173,6 +181,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_05
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_05}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -188,6 +197,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_06
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_06}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -203,6 +213,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_07
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_07}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -218,6 +229,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_08
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_08}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -233,6 +245,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_09
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_09}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -248,6 +261,7 @@ services:
     <<: *agent-base
     environment:
       AGENT_ID: agent_10
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_10}"
       REGISTRY_URL: https://api.swarmwage.com
       LEADERBOARD_URL: https://tournament.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
@@ -284,6 +298,7 @@ services:
       - internal
     environment:
       BUYER_ID: buyer_01
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_buyer_01}"
       REGISTRY_URL: https://api.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
       TICK_INTERVAL_MS: 300000
@@ -317,6 +332,7 @@ services:
       - internal
     environment:
       BUYER_ID: buyer_02
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_buyer_02}"
       REGISTRY_URL: https://api.swarmwage.com
       WALLET_SVC_URL: http://wallet-svc:7000
       TICK_INTERVAL_MS: 300000

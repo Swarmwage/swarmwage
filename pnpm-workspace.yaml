@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'packages/tournament/*'
   - 'examples/*'
   # packages/video is intentionally excluded from the public workspace.
   # The Remotion compositions are an internal marketing asset; only the

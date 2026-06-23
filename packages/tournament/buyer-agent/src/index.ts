@@ -53,8 +53,10 @@ function parseEnv(): BuyerEnv {
 }
 
 async function resolveAddress(env: BuyerEnv): Promise<Address> {
+  const token = process.env.WALLET_SVC_TOKEN;
   const res = await fetch(
     `${env.walletSvcUrl.replace(/\/$/, '')}/wallets/${env.buyerId}/address`,
+    token ? { headers: { authorization: `Bearer ${token}` } } : undefined,
   );
   if (!res.ok) {
     throw new Error(`wallet-svc address lookup ${res.status}: ${await res.text()}`);

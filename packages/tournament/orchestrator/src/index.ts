@@ -73,7 +73,11 @@ interface Snapshot {
 }
 
 async function tick() {
-  const res = await fetch(`${WALLET_SVC_URL}/internal/snapshot`);
+  const orchToken = process.env.ORCHESTRATOR_TOKEN;
+  const res = await fetch(
+    `${WALLET_SVC_URL}/internal/snapshot`,
+    orchToken ? { headers: { authorization: `Bearer ${orchToken}` } } : undefined,
+  );
   if (!res.ok) {
     console.error(`wallet-svc snapshot ${res.status}`);
     return;

@@ -211,8 +211,10 @@ export async function fetchBalanceUsdc(args: {
   walletSvcUrl: string;
   buyerId: string;
 }): Promise<number> {
+  const token = process.env.WALLET_SVC_TOKEN;
   const res = await fetch(
     `${args.walletSvcUrl.replace(/\/$/, '')}/wallets/${args.buyerId}/balance`,
+    token ? { headers: { authorization: `Bearer ${token}` } } : undefined,
   );
   if (!res.ok) {
     throw new Error(`balance ${res.status}: ${await res.text()}`);

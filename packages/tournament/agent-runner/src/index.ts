@@ -86,7 +86,11 @@ const PROVIDER_GEN_OPTS: { temperature?: number } =
 
 (async () => {
   // Resolve our public address from the wallet sidecar
-  const addrRes = await fetch(`${WALLET_SVC_URL}/wallets/${AGENT_ID}/address`);
+  const walletSvcToken = process.env.WALLET_SVC_TOKEN;
+  const addrRes = await fetch(
+    `${WALLET_SVC_URL}/wallets/${AGENT_ID}/address`,
+    walletSvcToken ? { headers: { authorization: `Bearer ${walletSvcToken}` } } : undefined,
+  );
   if (!addrRes.ok) {
     throw new Error(`wallet-svc address lookup ${addrRes.status}`);
   }

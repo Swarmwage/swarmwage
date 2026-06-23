@@ -176,7 +176,10 @@ export function buildTools(ctx: ToolContext) {
       parameters: z.object({}),
       execute: async () => {
         try {
-          const res = await fetch(`${ctx.walletSvcUrl}/wallets/${ctx.agentId}/balance`);
+          const token = process.env.WALLET_SVC_TOKEN;
+          const res = await fetch(`${ctx.walletSvcUrl}/wallets/${ctx.agentId}/balance`, {
+            headers: token ? { authorization: `Bearer ${token}` } : undefined,
+          });
           if (!res.ok) return { error: `wallet-svc balance → ${res.status}` };
           return await res.json();
         } catch (e) {
