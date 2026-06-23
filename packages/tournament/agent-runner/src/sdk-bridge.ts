@@ -10,6 +10,7 @@
 // pre-built account is tracked separately.
 
 import { createWalletClient, http, keccak256, toBytes, parseUnits, type LocalAccount } from 'viem';
+import { canonicalize } from '@swarmwage/agent-sdk';
 import { base } from 'viem/chains';
 import { wrapFetchWithPayment } from 'x402-fetch';
 import {
@@ -95,7 +96,7 @@ export async function publishListing(args: PublishArgs): Promise<Listing> {
     endpoint: args.endpoint,
   };
   // Mirror SDK signTypedPayload: canonical JSON (sorted keys) → keccak256 → personalSign
-  const canonical = JSON.stringify(partial, Object.keys(partial).sort());
+  const canonical = canonicalize(partial);
   const hash = keccak256(toBytes(canonical));
   const signature = await args.account.signMessage({ message: { raw: hash } });
 
@@ -198,7 +199,7 @@ export async function submitReceipt(args: SubmitReceiptArgs): Promise<unknown> {
     account: args.account,
     signMessage: (m: string) => args.account.signMessage({ message: m }),
     signTypedPayload: async (p: object) => {
-      const canonical = JSON.stringify(p, Object.keys(p).sort());
+      const canonical = canonicalize(p);
       const hash = keccak256(toBytes(canonical));
       return args.account.signMessage({ message: { raw: hash } });
     },

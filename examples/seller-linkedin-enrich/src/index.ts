@@ -18,6 +18,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { keccak256, toBytes } from "viem";
+import { canonicalize } from "@swarmwage/agent-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { paymentMiddleware, type Network } from "x402-hono";
 import { z } from "zod";
@@ -159,7 +160,7 @@ async function runEnrichment(input: HireParamsType) {
 // -------------------------------------------------------------------------
 
 async function signTypedPayload(payload: object): Promise<Hex> {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const canonical = canonicalize(payload);
   const hash = keccak256(toBytes(canonical));
   return account.signMessage({ message: { raw: hash } });
 }

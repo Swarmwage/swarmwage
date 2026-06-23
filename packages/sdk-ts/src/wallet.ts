@@ -4,6 +4,7 @@
 
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
+import { canonicalize } from "./canonical.js";
 import type { AgentId, Hex } from "./types.js";
 
 export interface WalletConfig {
@@ -35,8 +36,8 @@ export function createWallet({ privateKey }: WalletConfig): AgentWallet {
       return account.signMessage({ message });
     },
     signTypedPayload: async (payload: object): Promise<Hex> => {
-      // Canonicalize: stable JSON, then keccak256-hash, then sign as hex message.
-      const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+      // Canonicalize (recursive, nested fields covered), keccak256, sign as hex.
+      const canonical = canonicalize(payload);
       const hash = keccak256(toBytes(canonical));
       return account.signMessage({ message: { raw: hash } });
     },

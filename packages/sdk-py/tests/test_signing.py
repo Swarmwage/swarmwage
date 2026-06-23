@@ -19,10 +19,11 @@ _TEST_KEY = "0x" + "11" * 32
 _TEST_AGENT_ID = "0x19e7e376e7c213b7e7e7e46cc70a5dd086daff2a"
 
 
-def test_canonical_drops_nested_keys_not_in_top_level() -> None:
-    """JS `JSON.stringify(value, allowed)` filters keys at every nesting
-    depth. We replicate that quirk byte-for-byte; the registry depends on
-    it because it uses the same scheme to verify."""
+def test_canonical_sorts_nested_keys_recursively() -> None:
+    """Keys are sorted at EVERY nesting depth, so nested fields like
+    `verification.all_passed` are part of the signed bytes. (The old scheme
+    used a JS array replacer that silently dropped nested keys — the bug this
+    canonicalizer fixes; the registry verifies with the same scheme.)"""
     payload = {
         "agent_id": "0xaa",
         "buyer": "0xbb",
@@ -30,9 +31,9 @@ def test_canonical_drops_nested_keys_not_in_top_level() -> None:
         "amount_usdc_atomic": "100",
     }
     out = canonical_typed_payload(payload)
-    # nested `verification` keys are NOT in top-level keys → dropped
     assert out == (
-        '{"agent_id":"0xaa","amount_usdc_atomic":"100","buyer":"0xbb","verification":{}}'
+        '{"agent_id":"0xaa","amount_usdc_atomic":"100","buyer":"0xbb",'
+        '"verification":{"all_passed":true,"checks":{"schema_ok":true}}}'
     )
 
 
@@ -59,18 +60,31 @@ def test_receipt_payload_parity_with_ts_fixture() -> None:
         '"network":"base-sepolia",'
         '"protocol_version":"swarmwage/v0.1",'
         f'"tx_hash":"0x{"ab" * 32}",'
-        '"verification":{}}'
+        '"verification":{"all_passed":true,"checks":{"schema_ok":true}}}'
     )
     assert canonical_typed_payload(payload) == expected_canonical
 
-    expected_hash = (
-        "0x3714994dcfe1ae3556bed9e4465e3d90989a9ae0db2cc72fbd11ef75a1a1a5b2"
+    expected_hash = "0x" + "".join(
+        [
+            "6d34a034034059c7",
+            "2b47087cd3a87b70",
+            "f41e6ff204de646f",
+            "bc3d33b816b01291",
+        ]
     )
     assert "0x" + hash_typed_payload(payload).hex() == expected_hash
 
-    expected_sig = (
-        "0x4d5b378a7983d8fd8f8c203233c1192773d5794942ee07fcf07e1dd0316c544f"
-        "0af34ddc30a8b95af76c84a7d168ca60992946c0af7addef407cdafbcbf4560b1b"
+    expected_sig = "0x" + "".join(
+        [
+            "6fc03b20518a5157",
+            "9d1045c01a286b11",
+            "4b1b6646c5c67c39",
+            "2da98a572049bbaa",
+            "1aa90876dddfeff7",
+            "6a518b5c57d869a1",
+            "bb9f04dc32ababde",
+            "3b2fb8dcf56420b01b",
+        ]
     )
     assert sign_typed_payload(_TEST_KEY, payload) == expected_sig
 

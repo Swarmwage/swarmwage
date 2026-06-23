@@ -4,6 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { keccak256, toBytes } from "viem";
+import { canonicalize } from "@swarmwage/agent-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { challengeEndpointOwnership } from "../endpoint-verify.js";
@@ -17,7 +18,7 @@ const AGENT_ID = ACCOUNT.address.toLowerCase() as AgentId;
 const ENDPOINT = "https://seller.example/hire";
 
 async function signCanonical(payload: object): Promise<Hex> {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const canonical = canonicalize(payload);
   const hash = keccak256(toBytes(canonical));
   return ACCOUNT.signMessage({ message: { raw: hash } });
 }

@@ -3,6 +3,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { canonicalize } from "../canonical.js";
 
 import {
   isReceiptsEnabled,
@@ -101,7 +102,7 @@ describe("signReceipt", () => {
     // Round-trip recover via the same canonical scheme used server-side.
     const { recoverMessageAddress, keccak256, toBytes } = await import("viem");
     const { signature: _omit, ...rest } = body;
-    const canonical = JSON.stringify(rest, Object.keys(rest).sort());
+    const canonical = canonicalize(rest);
     const hash = keccak256(toBytes(canonical));
     const recovered = await recoverMessageAddress({
       message: { raw: hash },

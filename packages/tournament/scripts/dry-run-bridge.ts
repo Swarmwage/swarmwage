@@ -29,6 +29,7 @@ import { resolve } from 'node:path';
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { privateKeyToAccount } from 'viem/accounts';
 import { keccak256, toBytes } from 'viem';
+import { canonicalize } from '@swarmwage/agent-sdk';
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { createRemoteAccount } from '../agent-runner/src/remote-account.js';
@@ -85,6 +86,12 @@ async function waitForHealth(url: string, timeoutMs = 5000) {
 }
 
 let walletSvc: ChildProcess | null = null;
+
+function stopWalletSvc(): void {
+  const proc = walletSvc;
+  walletSvc = null;
+  if (proc) proc.kill();
+}
 
 async function spawnWalletSvc() {
   const env = {
@@ -145,7 +152,7 @@ async function spawnWalletSvc() {
       return c.json({ error: 'invalid nonce' }, 400);
     }
     const payload = { agent_id: addrA.toLowerCase(), nonce };
-    const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+    const canonical = canonicalize(payload);
     const hash = keccak256(toBytes(canonical));
     const signature = await accountA.signMessage({ message: { raw: hash } });
     return c.json({ agent_id: addrA.toLowerCase(), nonce, signature });
@@ -224,11 +231,11 @@ async function spawnWalletSvc() {
   console.log(`  https://basescan.org/address/${addrA}`);
   console.log(`  https://basescan.org/address/${addrB}`);
 
-  walletSvc?.kill();
+  stopWalletSvc();
   sellerSrv.close();
   process.exit(0);
 })().catch((e) => {
   console.error('[dry-run] fatal:', e);
-  walletSvc?.kill();
+  stopWalletSvc();
   process.exit(1);
 });

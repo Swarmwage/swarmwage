@@ -6,6 +6,7 @@
 
 export { AgentClient, type AgentClientOptions } from "./client.js";
 export { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
+export { canonicalize, CanonicalizationError } from "./canonical.js";
 export {
   createBudgetState,
   assertCanSpend,
