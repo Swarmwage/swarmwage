@@ -20,7 +20,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/__test__/*.test.ts",
     "start": "node dist/index.js",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

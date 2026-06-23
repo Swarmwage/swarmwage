@@ -46,7 +46,7 @@ Thumbs.db
 *.tsbuildinfo
 
 # Internal Claude scratch
-.claude/
+/.claude/
 
 # Demo output artifacts
 demo-output.*
@@ -55,12 +55,20 @@ demo-output.*
 Swarmwage.zip
 
 # Internal strategy docs (do NOT publish — contains viral tactics, pricing, moat strategy)
-PLAN.md
-CLAUDE.md
-launch/
-STRATEGY_REPORT.md
-ChangesAntigravity.md
-API_DA_VALIDARE.md
+/PLAN.md
+/CLAUDE.md
+/launch/
+/STRATEGY_REPORT.md
+/ChangesAntigravity.md
+/API_DA_VALIDARE.md
+
+# Internal agent coordination notes. Keep private until intentionally sanitized
+# and published; do not hide public per-example AGENTS.md files.
+/docs/architecture-notes/
+/docs/ai-technical-board.md
+/AGENTS.md
+/.codex/
+/.agents/
 
 # Internal marketing asset — Remotion compositions for the launch video.
 # Only the rendered MP4/PNG outputs ship publicly (Twitter, HN, Discord);
@@ -68,7 +76,7 @@ API_DA_VALIDARE.md
 packages/video/
 
 # Local MCP server config (project_ref is private project identifier)
-.mcp.json
+/.mcp.json
 # …except the Claude Code plugin's .mcp.json, which IS the canonical
 # public artifact telling installers how to wire up @swarmwage/mcp.
 !packages/plugin/.mcp.json
@@ -84,4 +92,4 @@ packages/tournament/.wallets.json.enc
 packages/tournament/.wallets.json
 packages/tournament/memory/
 packages/tournament/tick-logs/
-
+packages/tournament/leaderboard/preview.html
