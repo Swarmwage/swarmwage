@@ -1,0 +1,7 @@
+#:schema https://conductor.build/schemas/settings.repo.schema.json
+
+[scripts]
+setup = "pnpm install --frozen-lockfile"
+run = "pnpm --filter @swarmwage/landing exec next dev --turbo --port $CONDUCTOR_PORT"
+archive = "true"
+run_mode = "concurrent"
