@@ -29,7 +29,11 @@ const ReceiptSchema = z.object({
     ),
   verification: z.object({
     all_passed: z.boolean(),
-    checks: z.record(z.boolean()),
+    // Bound the key count — `checks` is signed + stored as JSONB; an
+    // unbounded record lets a seller bloat the reputation payload/DB.
+    checks: z
+      .record(z.boolean())
+      .refine((o) => Object.keys(o).length <= 32, "too many checks (max 32)"),
   }),
   signature: z.string().regex(/^0x[a-fA-F0-9]+$/),
 });

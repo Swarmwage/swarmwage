@@ -434,7 +434,9 @@ async function settleAuthorization(
     return {
       response: buildSettleFailure(
         network,
-        verifyReasonToSettleReason(pre.invalidReason),
+        // verify/settle error enums are unified upstream in x402, so the
+        // verify reason is already a valid settle errorReason (no-op cast).
+        pre.invalidReason as SettleResponse["errorReason"],
         pre.payer,
       ),
       gasSpentWei: null,
@@ -594,14 +596,6 @@ async function settleAuthorization(
   } finally {
     inFlightNonces.delete(key);
   }
-}
-
-function verifyReasonToSettleReason(
-  reason: VerifyResponse["invalidReason"],
-): SettleResponse["errorReason"] {
-  // The two error enums are unified in upstream x402, so the verify reason
-  // is already a valid settle errorReason. The cast is a structural no-op.
-  return reason as SettleResponse["errorReason"];
 }
 
 // ---------------------------------------------------------------------------

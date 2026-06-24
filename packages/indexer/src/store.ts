@@ -130,6 +130,16 @@ export class PostgresStore implements IndexerStore {
       // with prepared statements. Disable so we work seamlessly behind
       // the connection pooler on port 6543.
       prepare: false,
+      // Pool resilience — mirror the registry store (see the 2026-05-26
+      // Supabase pooler wedge). statement_timeout turns a wedged connection
+      // into a caught+retried error instead of a silently stalled scan loop
+      // (the indexer's tickOnce already catches + retries on throw).
+      idle_timeout: 30,
+      max_lifetime: 1800,
+      connect_timeout: 10,
+      connection: {
+        statement_timeout: 15_000,
+      },
       types: {
         bigint: postgres.BigInt,
       },
