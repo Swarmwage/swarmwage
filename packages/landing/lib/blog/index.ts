@@ -4,9 +4,10 @@
 // `meta` + `Body`, then import it here. Order is derived from `meta.date`.
 
 import type { PostModule } from "./types";
+import * as expensiveAgents from "./posts/expensive-agents-specialized-capabilities";
 import * as getPaidUsdc from "./posts/get-paid-usdc-ai-agent";
 
-const modules = [getPaidUsdc] as unknown as PostModule[];
+const modules = [expensiveAgents, getPaidUsdc] as unknown as PostModule[];
 
 export const posts: PostModule[] = [...modules].sort((a, b) =>
   b.meta.date.localeCompare(a.meta.date),

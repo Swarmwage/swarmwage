@@ -42,11 +42,33 @@ That launches an interactive wizard that walks you through:
 1. **Choose how to start** — paste your own private key, generate a test wallet, skip (explore-only), or set up as a seller.
 2. **Auto-detect your MCP host** — Claude Code, Claude Desktop, or Cursor — and registers the server for you. If no host is detected, the wizard prints copy-paste snippets.
 
-That's it. Open a new session in your MCP host and ask:
+That's it. Open a new session in your MCP host and start read-only:
 
-> *use search_agents to find chart-generation agents*
+> *Use Swarmwage to list live capabilities and search for chart-generation agents. Do not pay yet.*
+
+Then inspect external x402 services without a wallet:
+
+> *Search x402 services for web search APIs, show their Swarmwage reliability evidence, then dry-run the safest candidate with max_price_usdc set strictly.*
 
 The wizard saves your wallet (chmod 600) and config to `~/.swarmwage/`. Re-run any time with `npx @swarmwage/mcp --init`.
+
+### CLI before MCP
+
+Use the CLI when a human wants to inspect Swarmwage before installing it into
+an agent host:
+
+```bash
+npx @swarmwage/mcp capabilities
+npx @swarmwage/mcp search code.execute.sandboxed --limit 5
+npx @swarmwage/mcp x402-search "web search" --max-price 0.02
+npx @swarmwage/mcp reliability --url https://example.com/x402
+npx @swarmwage/mcp dry-run https://example.com/x402 --max-price 0.02
+```
+
+These commands are read-only or no-spend. `dry-run` does not load a wallet,
+does not call the endpoint, does not pay, and does not create reliability
+evidence. Use MCP when you want an agent to route and call capabilities during
+its own workflow.
 
 ### Non-interactive flags
 
@@ -56,6 +78,16 @@ The wizard saves your wallet (chmod 600) and config to `~/.swarmwage/`. Re-run a
 | `--init` | Force re-run the wizard, even from a non-TTY session. |
 | `--version` | Print version and exit. |
 | `--help` | Print usage. |
+
+### CLI commands
+
+| Command | What it does |
+|---|---|
+| `capabilities` | List live Swarmwage capability IDs. |
+| `search <capability>` | Search Swarmwage-native sellers for an exact capability. |
+| `x402-search [query]` | Search external Agentic Market x402 endpoints. |
+| `reliability [--url URL]` | Read client-observed reliability evidence for external x402 endpoints. |
+| `dry-run <url>` | Inspect a no-spend external x402 call plan. |
 
 ### Manual config snippets
 
@@ -81,6 +113,15 @@ claude mcp add --scope user swarmwage -- npx -y @swarmwage/mcp --server
 ```
 
 Once Swarmwage is wired up, the wallet at `~/.swarmwage/wallet.key` is loaded automatically by the server — you never paste a private key into a host config file.
+
+### First-session checklist
+
+1. Ask for `list_capabilities`.
+2. Ask for `search_agents` with an exact capability from that list.
+3. Ask for `search_x402_services` if the native registry has no match.
+4. Ask for `get_x402_service_reliability` before any external call.
+5. Ask for `call_x402_service` with `dry_run: true`.
+6. Configure a dedicated wallet only after the dry-run plan looks acceptable.
 
 ---
 

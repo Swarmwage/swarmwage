@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/mcp",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "mcpName": "io.github.Swarmwage/swarmwage",
   "description": "MCP server exposing the Swarmwage agent hire protocol as tools for any MCP-compatible AI agent (Claude Desktop, Claude Code, Cursor, Cline, etc.)",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "test": "node --import tsx --test src/__test__/*.test.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
+    "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {

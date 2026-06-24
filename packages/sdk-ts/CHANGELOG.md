@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.7.2] — 2026-06-24
+
+### Added
+
+- `payX402` now submits best-effort client-observed reliability records for
+  external x402 calls and returns `reliability_record_id`, `request_hash`, and
+  `response_hash` when available.
+- `getExternalX402Reliability()` reads aggregate reliability evidence from the
+  registry.
+- `SWARMWAGE_RELIABILITY=0` opt-out for external x402 reliability submission.
+
+### Fixed
+
+- Release packaging now rebuilds before `npm pack`/publish so npm tarballs
+  cannot ship stale `dist` output.
+
 ## [0.7.1] — 2026-06-23
 
 ### Added

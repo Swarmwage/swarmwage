@@ -1,6 +1,6 @@
 {
   "name": "@swarmwage/agent-sdk",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Official TypeScript SDK for the Swarmwage agent hire protocol",
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,9 @@
     "dev": "tsup --watch",
     "test": "node --import tsx --test src/__test__/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@x402/core": "~2.15.0",
