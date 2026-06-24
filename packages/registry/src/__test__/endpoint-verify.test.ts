@@ -155,6 +155,60 @@ describe("challengeEndpointOwnership", () => {
       /unreachable/,
     );
   });
+
+  it("SSRF guard: rejects (before any fetch) when the host resolves to a private IP", async () => {
+    let fetched = false;
+    const fetchFn = stubFetch(async () => {
+      fetched = true;
+      return new Response("{}", { status: 200 });
+    });
+    const result = await challengeEndpointOwnership(ENDPOINT, AGENT_ID, {
+      fetchFn,
+      nonceFn: () => "n",
+      resolveFn: async () => ["10.0.0.9"],
+    });
+    assert.equal(result.ok, false);
+    assert.match(
+      (result as { ok: false; reason: string }).reason,
+      /forbidden IP 10\.0\.0\.9 \(SSRF guard\)/,
+    );
+    assert.equal(fetched, false, "must not issue the request to a forbidden host");
+  });
+
+  it("SSRF guard: rejects a 3xx redirect instead of following it", async () => {
+    const fetchFn = stubFetch(
+      () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "http://169.254.169.254/latest/meta-data/" },
+        }),
+    );
+    const result = await challengeEndpointOwnership(ENDPOINT, AGENT_ID, {
+      fetchFn,
+      nonceFn: () => "n",
+    });
+    assert.equal(result.ok, false);
+    assert.match(
+      (result as { ok: false; reason: string }).reason,
+      /redirected.*SSRF guard/,
+    );
+  });
+
+  it("rejects an over-sized verify response body", async () => {
+    const huge = "x".repeat(20 * 1024); // > 16KB cap
+    const fetchFn = stubFetch(
+      () => new Response(huge, { status: 200 }),
+    );
+    const result = await challengeEndpointOwnership(ENDPOINT, AGENT_ID, {
+      fetchFn,
+      nonceFn: () => "n",
+    });
+    assert.equal(result.ok, false);
+    assert.match(
+      (result as { ok: false; reason: string }).reason,
+      /too large/,
+    );
+  });
 });
 
 describe("POST /v1/listings — endpointVerifyMode integration", () => {

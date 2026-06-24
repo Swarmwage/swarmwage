@@ -510,6 +510,24 @@ export class PostgresStore implements RegistryStore {
     };
   }
 
+  // Recompute the materialized `reputation` view. CONCURRENTLY does not
+  // block readers (relies on reputation_agent_id_idx). The matview is
+  // created WITH DATA, so the first concurrent refresh is valid.
+  // ponytail: process-driven setInterval, fine at single-replica; move to
+  // pg_cron if we ever run >1 registry replica.
+  async refreshReputation(): Promise<void> {
+    try {
+      await this.sql`REFRESH MATERIALIZED VIEW CONCURRENTLY reputation`;
+    } catch (err) {
+      // 42809 = `reputation` is still a plain VIEW (migration 003 not applied
+      // yet). A VIEW is always live, so there is nothing to refresh — return
+      // quietly instead of spamming stderr every interval. Apply the migration
+      // to get the materialized (scale-safe) path.
+      if ((err as { code?: string } | null)?.code === "42809") return;
+      throw err;
+    }
+  }
+
   // -------------------------------------------------------------------
   // Receipts (Layer 3 of the 4-layer data capture)
   // -------------------------------------------------------------------

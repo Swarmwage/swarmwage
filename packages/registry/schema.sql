@@ -149,8 +149,15 @@ CREATE INDEX IF NOT EXISTS external_x402_reliability_tx_hash_idx
   ON external_x402_reliability_records(tx_hash)
   WHERE tx_hash IS NOT NULL;
 
--- Reputation view (computed on-the-fly; promote to materialized view at scale)
-CREATE OR REPLACE VIEW reputation AS
+-- Reputation — MATERIALIZED so /v1/search joins a precomputed table instead
+-- of evaluating 6 correlated subqueries per agent on every query (the
+-- O(listings × hires) crash-risk under load). Refreshed on an interval by
+-- the server process (REFRESH MATERIALIZED VIEW CONCURRENTLY — needs the
+-- unique index below). Tradeoff: reputation (and a brand-new seller's
+-- visibility, since /v1/search INNER JOINs this) lags reality by up to one
+-- refresh interval — fine for a reputation surface that is "meaningful from
+-- Day 30+" anyway.
+CREATE MATERIALIZED VIEW IF NOT EXISTS reputation AS
 SELECT
   a.agent_id,
   a.claimed_by_handle IS NOT NULL AS claimed,
@@ -185,3 +192,7 @@ SELECT
     0
   ) AS avg_stars
 FROM agents a;
+
+-- Required for REFRESH MATERIALIZED VIEW CONCURRENTLY (non-blocking refresh).
+CREATE UNIQUE INDEX IF NOT EXISTS reputation_agent_id_idx
+  ON reputation(agent_id);

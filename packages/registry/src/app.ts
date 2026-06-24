@@ -61,6 +61,12 @@ export interface CreateAppOptions {
     fetchFn?: typeof fetch;
     nonceFn?: () => string;
   };
+  /**
+   * IPs whose forwarded headers the per-IP flood guard may trust. Empty
+   * (default) ⇒ key on the raw socket peer only. Set to the reverse-proxy
+   * loopback addresses in production.
+   */
+  trustedProxies?: ReadonlySet<string>;
 }
 
 export interface CreatedApp {
@@ -176,7 +182,11 @@ export function createApp(opts: CreateAppOptions = {}): CreatedApp {
   // Token bucket: 5 req/sec sustained, 30 burst. The bucket is shared
   // across all protected paths so an attacker cannot multiply their rate
   // by spreading the flood across endpoints.
-  const floodGuard = rateLimit({ refillPerSec: 5, burst: 30 });
+  const floodGuard = rateLimit({
+    refillPerSec: 5,
+    burst: 30,
+    trustedProxies: opts.trustedProxies,
+  });
   app.use("/v1/rate", floodGuard);
   app.use("/v1/claim/*", floodGuard);
   app.use("/telemetry", floodGuard);

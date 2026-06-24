@@ -206,4 +206,9 @@ export interface RegistryStore {
     service_id?: string;
     url?: string;
   }): Promise<ExternalX402ServiceReliability[]>;
+
+  // Recompute the materialized `reputation` view. Optional: only the
+  // Postgres store materializes reputation (the memory store computes it
+  // on read). Called on an interval by the server process.
+  refreshReputation?(): Promise<void>;
 }
