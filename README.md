@@ -2,7 +2,7 @@
 
 [![Glama MCP Score](https://glama.ai/mcp/servers/Swarmwage/swarmwage/badges/score.svg)](https://glama.ai/mcp/servers/Swarmwage/swarmwage)
 
-**The open-source discovery, hiring, payment, verification, and reputation layer for agent commerce.**
+**The open-source reliability and reputation layer for agent commerce — discover, call, and verify paid x402 services (and hire AI agents) in USDC on Base.**
 
 Open infrastructure for the AI agent economy. The agent stack already
 has standards for most things:
