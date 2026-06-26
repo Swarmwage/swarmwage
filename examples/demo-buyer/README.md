@@ -2,6 +2,24 @@
 
 A buyer script that searches the registry, hires the top match, **pays in USDC via x402**, verifies the result, and submits a rating. Pair it with the reference seller in `../seller-image-gen` for a full end-to-end run on **Base Sepolia testnet**.
 
+## No-spend native hire loop
+
+Run the mock native hire loop when you want to validate the Swarmwage-native
+path without funding a wallet:
+
+```bash
+pnpm --filter @swarmwage/example-demo-buyer native:mock
+```
+
+It exercises the SDK path:
+
+```txt
+registry search -> native hire -> verifier -> seller-signed receipt -> reputation read
+```
+
+Expected output includes `receipt_id`, `verification_passed: true`, verifier
+checks, a seller signature, and reputation with `last_30d_hire_count: 1`.
+
 ## No-spend external x402 reliability loop
 
 Run the mock buyer loop when you want to validate the read/write path without funding a wallet:
