@@ -3,6 +3,7 @@
 import type { Metadata } from "next";
 import { posts } from "../../lib/blog";
 import { INTENT_LABEL } from "../../lib/blog/types";
+import { fmtDate } from "../../lib/blog/dates";
 
 const SITE_URL = "https://swarmwage.com";
 const TITLE = "Swarmwage Blog — building the agent hire economy";
@@ -39,15 +40,6 @@ const JSON_LD = {
     url: `${SITE_URL}/blog/${p.meta.slug}`,
   })),
 };
-
-function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
-}
 
 export default function BlogIndexPage() {
   return (

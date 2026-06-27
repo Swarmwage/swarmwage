@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getPost, posts } from "../../../lib/blog";
 import { INTENT_LABEL } from "../../../lib/blog/types";
 import { articleJsonLd } from "../../../lib/blog/jsonld";
+import { fmtDate } from "../../../lib/blog/dates";
 
 const SITE_URL = "https://swarmwage.com";
 
@@ -46,15 +47,6 @@ export async function generateMetadata({
       description: meta.description,
     },
   };
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
 }
 
 export default async function BlogPostPage({
