@@ -21,26 +21,11 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Hono } from "hono";
-import { serve } from "@hono/node-server";
-import { keccak256, toBytes } from "viem";
-import { canonicalize } from "@swarmwage/agent-sdk";
-import { privateKeyToAccount } from "viem/accounts";
-import { paymentMiddleware, type Network } from "x402-hono";
+import type { Network } from "x402-hono";
 import * as cheerio from "cheerio";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  PROTOCOL_VERSION,
-  submitReceipt,
-  type AgentId,
-  type Hex,
-  ENDPOINT_VERIFY_PATH,
-  signEndpointVerify,
-  type Listing,
-} from "@swarmwage/agent-sdk";
-import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
-import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
-import { firstCallFreeGate, inMemoryTracker } from "./first-call-free.js";
+import type { Hex } from "@swarmwage/agent-sdk";
+import { createSellerRuntime } from "@swarmwage/example-seller-runtime";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -74,12 +59,6 @@ const HIRE_RATE_LIMIT_PER_IP = Number(
   process.env.HIRE_RATE_LIMIT_PER_IP ?? 20,
 );
 const HIRE_RATE_WINDOW_MS = Number(process.env.HIRE_RATE_WINDOW_MS ?? 60_000);
-const hireIpLimiter = new SlidingWindowLimiter({
-  limit: HIRE_RATE_LIMIT_PER_IP,
-  windowMs: HIRE_RATE_WINDOW_MS,
-});
-setInterval(() => hireIpLimiter.gc(), HIRE_RATE_WINDOW_MS).unref();
-
 // Per-day budget guard. Caps both hire count AND cumulative upstream USD,
 // resetting at UTC midnight. Tunable via env so an operator can lift the
 // ceiling for a known-trusted deployment without rebuilding.
@@ -90,17 +69,11 @@ const MAX_DAILY_SPEND_USD = Number(process.env.MAX_DAILY_SPEND_USD ?? 50);
 const EST_UPSTREAM_USD_PER_CALL = Number(
   process.env.EST_UPSTREAM_USD_PER_CALL ?? 0.0005,
 );
-const dailyBudget = new DailyBudget({
-  maxHires: MAX_DAILY_HIRES,
-  maxSpendUsd: MAX_DAILY_SPEND_USD,
-});
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS ?? 8_000);
 const DEFAULT_MAX_KB = 512;
 const HARD_MAX_KB = 4_096;
 const ALLOW_PRIVATE_FETCH = process.env.ALLOW_PRIVATE_FETCH === "1";
 
-const account = privateKeyToAccount(PRIVATE_KEY);
-const agentId = account.address.toLowerCase() as AgentId;
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 // -------------------------------------------------------------------------
@@ -381,170 +354,40 @@ async function runExtraction(input: ExtractInput): Promise<ExtractOutput> {
   };
 }
 
-// -------------------------------------------------------------------------
-// Sign + publish listing
-// -------------------------------------------------------------------------
-
-async function signTypedPayload(payload: object): Promise<Hex> {
-  const canonical = canonicalize(payload);
-  const hash = keccak256(toBytes(canonical));
-  return account.signMessage({ message: { raw: hash } });
-}
-
-async function publishListing(): Promise<void> {
-  const listingPayload = {
-    agent_id: agentId,
-    capability: "data.extract.from-url",
-    price_usdc: PRICE_USDC,
-    currency: "USDC" as const,
-    chain: "base" as const,
-    max_latency_ms: 12_000,
-    first_call_free: true,
-    endpoint: PUBLIC_URL,
-  };
-  const signature = await signTypedPayload(listingPayload);
-  const listing: Listing = { ...listingPayload, signature };
-
-  const res = await fetch(`${REGISTRY_URL}/v1/listings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(listing),
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Failed to publish listing: ${res.status} ${txt}`);
-  }
-  process.stderr.write(
-    `seller-data-extract: listing published (capability=${listingPayload.capability}, price=${PRICE_USDC} USDC)\n`,
-  );
-}
-
-// -------------------------------------------------------------------------
-// HTTP server
-// -------------------------------------------------------------------------
-
-type Variables = {
-  pendingReceipt?: {
-    payload: Parameters<typeof submitReceipt>[0]["payload"];
-  };
-  freeCall?: boolean;
-  freeCallBuyerId?: string;
-};
-const firstCallTracker = inMemoryTracker();
-const app = new Hono<{ Variables: Variables }>();
-
-app.get("/", (c) =>
-  c.json({
-    name: "swarmwage seller — data.extract.from-url",
-    agent_id: agentId,
-    protocol: PROTOCOL_VERSION,
+const CAPABILITY = "data.extract.from-url";
+const runtime = createSellerRuntime({
+  identity: { privateKey: PRIVATE_KEY, serviceName: "seller-data-extract" },
+  listing: {
+    capability: CAPABILITY,
+    priceUsdc: PRICE_USDC,
+    maxLatencyMs: 12_000,
+    firstCallFree: true,
+    publicUrl: PUBLIC_URL,
+    registryUrl: REGISTRY_URL,
+    publishedMessage: `seller-data-extract: listing published (capability=${CAPABILITY}, price=${PRICE_USDC} USDC)\n`,
+  },
+  payment: { network: NETWORK, facilitatorUrl: FACILITATOR_URL },
+  limits: {
+    perIp: HIRE_RATE_LIMIT_PER_IP,
+    windowMs: HIRE_RATE_WINDOW_MS,
+    maxDailyHires: MAX_DAILY_HIRES,
+    maxDailySpendUsd: MAX_DAILY_SPEND_USD,
+    estimatedUpstreamUsd: EST_UPSTREAM_USD_PER_CALL,
+  },
+  metadata: {
     backend: `cheerio + ${ANTHROPIC_MODEL}`,
     network: NETWORK,
     price_usdc: PRICE_USDC,
-  }),
-);
-
-// Endpoint ownership proof (Wave 2a). Lets the registry confirm we
-// control the same wallet as `agent_id` by signing a nonce. Closes the
-// squat where a different agent_id is bound to a third-party endpoint.
-app.get(ENDPOINT_VERIFY_PATH, async (c) => {
-  const nonce = c.req.query("nonce");
-  if (!nonce || nonce.length < 8 || nonce.length > 128) {
-    return c.json({ error: "Invalid or missing nonce" }, 400);
-  }
-  return c.json(await signEndpointVerify(agentId, nonce, signTypedPayload));
-});
-
-// Synthetic sample product page so the demo runs without samples.swarmwage.com.
-app.get("/sample/product-001.html", async (c) => {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const path = resolve(here, "..", "samples", "product-001.html");
-  const html = await readFile(path, "utf8");
-  return c.html(html);
-});
-
-// Per-IP flood guard. Mounted BEFORE paymentMiddleware so a flood attack
-// is rejected with 429 without ever invoking the facilitator.
-app.use("/hire", rateLimit(hireIpLimiter, clientIp));
-
-// Per-day budget guard — closes /hire with 503 once the day's hire count or
-// upstream spend cap is hit. Mounted before paymentMiddleware so the buyer
-// is never charged USDC for a call we cannot fulfil.
-app.use("/hire", dailyBudgetGuard(dailyBudget, EST_UPSTREAM_USD_PER_CALL));
-
-// Receipt-submission post-hook. Mounted BEFORE paymentMiddleware so its
-// post-await(next) phase runs AFTER paymentMiddleware has attached the
-// X-PAYMENT-RESPONSE header (which carries the real settlement tx_hash).
-// The /hire handler stashes the receipt payload via c.set("pendingReceipt").
-app.use("/hire", async (c, next) => {
-  await next();
-  const pending = c.get("pendingReceipt") as
-    | { payload: Parameters<typeof submitReceipt>[0]["payload"] }
-    | undefined;
-  if (!pending) return;
-  if (c.res.status >= 400) return;
-  let txHash =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
-  const paymentResponseHeader = c.res.headers.get("X-PAYMENT-RESPONSE");
-  if (paymentResponseHeader) {
-    try {
-      const decoded = JSON.parse(
-        Buffer.from(paymentResponseHeader, "base64").toString("utf8"),
-      ) as { transaction?: string; txHash?: string };
-      txHash = decoded.transaction ?? decoded.txHash ?? txHash;
-    } catch {
-      // header malformed — keep placeholder
-    }
-  }
-  void submitReceipt({
-    registryUrl: REGISTRY_URL,
-    sellerPrivateKey: PRIVATE_KEY,
-    payload: { ...pending.payload, tx_hash: txHash as `0x${string}` },
-  });
-});
-
-// Wrapped by `firstCallFreeGate` so a buyer's first-ever hire against this
-// seller bypasses payment (SPEC §11 — listing advertises first_call_free).
-const pmw = paymentMiddleware(
-  account.address,
-  {
-    "POST /hire": {
-      price: `$${PRICE_USDC}`,
-      network: NETWORK,
-    },
   },
-  { url: FACILITATOR_URL },
-);
-
-app.use(
-  "/hire",
-  firstCallFreeGate({ paymentMiddleware: pmw, tracker: firstCallTracker }),
-);
-
-app.post("/hire", async (c) => {
-  const t0 = Date.now();
-  const body = (await c.req.json()) as {
-    protocol?: string;
-    buyer_id?: AgentId;
-    capability?: string;
-    params?: ExtractInput;
-    max_price_usdc?: string;
-    nonce?: string;
-  };
-
-  if (body.protocol !== PROTOCOL_VERSION) {
-    return c.json(
-      { error: `Unsupported protocol: ${body.protocol ?? "?"}` },
-      400,
-    );
-  }
-  if (body.capability !== "data.extract.from-url") {
-    return c.json(
-      { error: `Capability not supported: ${body.capability}` },
-      400,
-    );
-  }
-  const params = body.params;
+  configure(app) {
+    app.get("/sample/product-001.html", async (c) => {
+      const here = dirname(fileURLToPath(import.meta.url));
+      const path = resolve(here, "..", "samples", "product-001.html");
+      return c.html(await readFile(path, "utf8"));
+    });
+  },
+  async fulfill(raw, c) {
+  const params = raw as ExtractInput | undefined;
   if (!params || typeof params.url !== "string") {
     return c.json({ error: "params.url required" }, 400);
   }
@@ -565,26 +408,6 @@ app.post("/hire", async (c) => {
     return c.json({ error: `Extraction failed: ${(err as Error).message}` }, 502);
   }
 
-  const completedAt = Math.floor(Date.now() / 1000);
-  const latency = Date.now() - t0;
-  const receiptId = `rcpt_${crypto.randomUUID()}`;
-  const ratingToken = `rtt_${crypto.randomUUID()}`;
-  const freeCall = c.get("freeCall") === true;
-  const pricePaid = freeCall ? "0.00" : PRICE_USDC;
-
-  // Commit free-call consumption only after a successful extraction.
-  if (freeCall) {
-    const buyerKey = c.get("freeCallBuyerId");
-    if (buyerKey) firstCallTracker.markSeen(buyerKey);
-  }
-
-  // x402-hono attaches X-PAYMENT-RESPONSE on the response only AFTER this
-  // handler returns. We ship tx_hash=0x0…0 here and the @swarmwage/agent-sdk
-  // client patches it from the response header on its side. The signed
-  // receipt is submitted by the post-hook middleware mounted above.
-  const ZERO_HASH =
-    "0x0000000000000000000000000000000000000000000000000000000000000000";
-
   const verification = {
     checks: [
       { name: "fetched_ok", passed: true },
@@ -594,73 +417,14 @@ app.post("/hire", async (c) => {
     all_passed: true,
   };
 
-  // Stash the receipt payload (without tx_hash) for the post-hook to pick up
-  // and submit once X-PAYMENT-RESPONSE is attached to the response.
-  c.set("pendingReceipt", {
-    payload: {
-      protocol_version: PROTOCOL_VERSION,
-      hire_id: receiptId,
-      agent_id: agentId,
-      buyer:
-        (body.buyer_id?.toLowerCase() as AgentId) ??
-        ("0x0000000000000000000000000000000000000000" as AgentId),
-      capability: body.capability ?? "data.extract.from-url",
-      amount_usdc_atomic: freeCall ? "0" : priceUsdcToAtomic(PRICE_USDC),
-      network: NETWORK as "base" | "base-sepolia",
-      tx_hash: ZERO_HASH as `0x${string}`,
-      completed_at: new Date(completedAt * 1000).toISOString(),
-      verification: {
-        all_passed: verification.all_passed,
-        checks: Object.fromEntries(
-          verification.checks.map((c) => [c.name, c.passed]),
-        ),
-      },
-    },
-  });
-
-  return c.json({
-    protocol: PROTOCOL_VERSION,
-    receipt: {
-      receipt_id: receiptId,
-      buyer_id: body.buyer_id ?? "0x0000000000000000000000000000000000000000",
-      seller_id: agentId,
-      capability: body.capability,
-      tx_hash: ZERO_HASH,
-      price_paid_usdc: pricePaid,
-      completed_at: completedAt,
-      first_call_free: freeCall,
-    },
+  return {
     result,
     verification,
-    rating_token: ratingToken,
-    _meta: { latency_ms: latency, first_call_free: freeCall },
-  });
+  };
+  },
 });
 
-// Convert "0.05" → "50000" (USDC has 6 decimals).
-function priceUsdcToAtomic(price: string): string {
-  const [intPart, fracPart = ""] = price.split(".");
-  const frac = (fracPart + "000000").slice(0, 6);
-  const combined = `${intPart}${frac}`.replace(/^0+(?=\d)/, "");
-  return combined === "" ? "0" : combined;
-}
-
-// -------------------------------------------------------------------------
-// Boot
-// -------------------------------------------------------------------------
-
-(async () => {
-  try {
-    await publishListing();
-  } catch (err) {
-    process.stderr.write(
-      `seller-data-extract: WARN failed to publish listing — ${(err as Error).message}\n`,
-    );
-  }
-
-  serve({ fetch: app.fetch, port: PORT }, () => {
-    process.stderr.write(
-      `seller-data-extract v0.0.1 listening on ${PUBLIC_URL} (agent_id=${agentId})\n`,
-    );
-  });
-})();
+void runtime.start(
+  PORT,
+  `seller-data-extract v0.0.1 listening on ${PUBLIC_URL} (agent_id=${runtime.agentId})\n`,
+);

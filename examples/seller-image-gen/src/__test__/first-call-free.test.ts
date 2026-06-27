@@ -7,7 +7,10 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 
-import { firstCallFreeGate, inMemoryTracker } from "../first-call-free.js";
+import {
+  firstCallFreeGate,
+  inMemoryTracker,
+} from "@swarmwage/example-seller-runtime";
 
 const BUYER = "0xabcdef0123456789abcdef0123456789abcdef01";
 const BUYER_2 = "0x1111111111111111111111111111111111111111";

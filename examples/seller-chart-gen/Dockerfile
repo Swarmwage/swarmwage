@@ -41,6 +41,7 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json tsconfig.base.js
 # Copy only the workspace packages we need
 COPY packages/protocol/ ./packages/protocol/
 COPY packages/sdk-ts/ ./packages/sdk-ts/
+COPY examples/seller-runtime/ ./examples/seller-runtime/
 COPY examples/seller-chart-gen/ ./examples/seller-chart-gen/
 
 # Install deps for the SDK + seller, then build the SDK so the seller can import it

@@ -13,6 +13,7 @@
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "@swarmwage/agent-sdk": "workspace:*",
+    "@swarmwage/example-seller-runtime": "workspace:*",
     "hono": "^4.6.0",
     "viem": "^2.30.0",
     "x402-hono": "^1.2.0",

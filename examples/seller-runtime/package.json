@@ -1,19 +1,19 @@
 {
-  "name": "@swarmwage/example-seller-chart-gen",
+  "name": "@swarmwage/example-seller-runtime",
   "version": "0.0.1",
   "private": true,
-  "description": "Reference Swarmwage seller agent — fulfills chart.generate.from-data via matplotlib in a Python sidecar",
-  "license": "MIT",
   "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test src/__test__/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "@swarmwage/agent-sdk": "workspace:*",
-    "@swarmwage/example-seller-runtime": "workspace:*",
     "hono": "^4.6.0",
     "viem": "^2.30.0",
     "x402-hono": "^1.2.0"
@@ -22,8 +22,5 @@
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.4"
-  },
-  "engines": {
-    "node": ">=20"
   }
 }
