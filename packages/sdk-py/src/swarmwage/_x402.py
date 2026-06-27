@@ -21,7 +21,6 @@ import secrets
 import time
 from typing import Any, Iterable
 
-from eth_account import Account
 from eth_account.messages import encode_typed_data
 from eth_account.signers.local import LocalAccount
 

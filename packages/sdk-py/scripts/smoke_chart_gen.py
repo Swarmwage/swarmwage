@@ -47,7 +47,7 @@ def main() -> int:
     network = os.environ.get("NETWORK", "base")
 
     account = Account.from_key(private_key)
-    print(f"=== Swarmwage py-sdk smoke — chart.generate.from-data ===")
+    print("=== Swarmwage py-sdk smoke — chart.generate.from-data ===")
     print(f"  buyer_id    : {account.address.lower()}")
     print(f"  network     : {network}")
     print(f"  key source  : {'GENERATED (fresh — expects first_call_free)' if generated else 'env BUYER_PRIVATE_KEY'}")

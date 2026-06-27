@@ -7,8 +7,6 @@
 # and a Python-signed payload will fail registry verification.
 from __future__ import annotations
 
-import pytest
-
 from swarmwage import (
     canonical_typed_payload,
     hash_typed_payload,
