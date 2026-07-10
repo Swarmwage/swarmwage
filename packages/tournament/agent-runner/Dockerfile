@@ -6,16 +6,24 @@
 FROM node:20-alpine AS build
 
 WORKDIR /app
+RUN apk add --no-cache python3 make g++
 
 # Stage + BUILD the shared workspace package first. We compile it to dist/ JS
 # here so the runtime never has to execute .ts, and so we can replace npm's
 # file: SYMLINK with a real directory (a multi-stage COPY would otherwise leave
 # a dangling symlink pointing at a /shared the final stage never copies).
-COPY shared/package.json shared/tsconfig.build.json ./shared/
+COPY shared/package.json shared/tsconfig.json ./shared/
 COPY shared/src ./shared/src
 RUN cd shared \
  && npm install --omit=optional --no-audit --no-fund typescript@5.5.4 \
- && npx tsc -p tsconfig.build.json \
+ && npx tsc -p tsconfig.json --noEmit false --outDir dist --declaration true \
+ && sed -i \
+      -e 's|"main": "src/index.ts"|"main": "dist/index.js"|' \
+      -e 's|"types": "src/index.ts"|"types": "dist/index.d.ts"|' \
+      -e 's|"./src/index.ts"|"./dist/index.js"|' \
+      -e 's|"./src/compound-templates.ts"|"./dist/compound-templates.js"|' \
+      -e 's|"./src/roster.ts"|"./dist/roster.js"|' \
+      package.json \
  && rm -rf node_modules
 
 WORKDIR /app/agent-runner
@@ -24,10 +32,10 @@ COPY agent-runner/src ./src
 
 # Rewrite the workspace:* specs for npm install:
 #   - tournament-shared -> file:../shared (sibling built above)
-#   - agent-sdk -> published npm version since npm has no workspace awareness
+#   - agent-sdk -> current published npm version since npm has no workspace awareness
 RUN sed -i \
   -e 's|"@swarmwage/tournament-shared": "workspace:\*"|"@swarmwage/tournament-shared": "file:../shared"|' \
-  -e 's|"@swarmwage/agent-sdk": "workspace:\*"|"@swarmwage/agent-sdk": "^0.5.1"|' \
+  -e 's|"@swarmwage/agent-sdk": "workspace:\*"|"@swarmwage/agent-sdk": "^0.7.2"|' \
   package.json \
  && npm install --omit=optional --no-audit --no-fund \
  && npx tsc \

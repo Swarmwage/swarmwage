@@ -19,7 +19,7 @@ FROM node:20-bookworm-slim
 # Python + matplotlib (in a venv to satisfy PEP 668)
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-       python3 python3-venv ca-certificates \
+       python3 python3-venv ca-certificates make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/venv
