@@ -19,7 +19,7 @@
 FROM node:20-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends ca-certificates python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 # pnpm via corepack
@@ -33,6 +33,7 @@ COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json tsconfig.base.js
 # Copy only the workspace packages we need
 COPY packages/protocol/ ./packages/protocol/
 COPY packages/sdk-ts/ ./packages/sdk-ts/
+COPY examples/seller-runtime/ ./examples/seller-runtime/
 COPY examples/seller-code-exec/ ./examples/seller-code-exec/
 
 # Install deps for the SDK + seller, then build the SDK so the seller can import it

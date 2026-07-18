@@ -6,6 +6,7 @@
 
 export { AgentClient, type AgentClientOptions } from "./client.js";
 export { createWallet, type AgentWallet, type WalletConfig } from "./wallet.js";
+export { canonicalize, CanonicalizationError } from "./canonical.js";
 export {
   createBudgetState,
   assertCanSpend,
@@ -16,6 +17,7 @@ export {
 } from "./budget.js";
 export { verify, registerVerifier, getVerifier, type Verifier } from "./verification.js";
 export { createTelemetry, DEFAULT_TELEMETRY_URL } from "./telemetry.js";
+export { isReliabilityEnabled } from "./reliability.js";
 export {
   submitReceipt,
   signReceipt,
@@ -55,6 +57,11 @@ export {
   type HireResponse,
   type AsyncHireResponse,
   type JobStatus,
+  type PayX402Request,
+  type PayX402Response,
+  type ExternalX402ReliabilityQuery,
+  type ExternalX402ReliabilityResponse,
+  type ExternalX402ServiceReliability,
   type Receipt,
   type RatingRequest,
   type Stars,

@@ -99,8 +99,8 @@ def _validate_basic_url(url: str) -> tuple[str, str]:
     # route traffic to a different host.
     if parts.username is not None or parts.password is not None:
         raise TransportError(
-            f"Refusing URL with embedded userinfo: hostname must not be "
-            f"preceded by `user:pass@`"
+            "Refusing URL with embedded userinfo: hostname must not be "
+            "preceded by `user:pass@`"
         )
     host = parts.hostname or ""
     return scheme, host

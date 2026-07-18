@@ -2,6 +2,7 @@
 // License: BUSL-1.1
 
 import { verifyMessage, keccak256, toBytes } from "viem";
+import { canonicalize } from "@swarmwage/agent-sdk";
 import type { AgentId, Hex } from "@swarmwage/agent-sdk";
 
 /**
@@ -15,7 +16,7 @@ export async function verifyTypedPayload(
   payload: object,
   signature: Hex,
 ): Promise<boolean> {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const canonical = canonicalize(payload);
   const hash = keccak256(toBytes(canonical));
   try {
     return await verifyMessage({

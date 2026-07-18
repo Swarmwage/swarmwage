@@ -36,6 +36,24 @@ const EnvSchema = z
       .optional()
       .transform((v) => (v ? Number.parseInt(v, 10) : 5000))
       .pipe(z.number().int().positive()),
+    // Comma-separated IPs whose X-Forwarded-For / X-Real-IP headers the
+    // rate limiter may trust. Empty (default) ⇒ key on the raw socket peer
+    // only — the safe posture when exposed directly. Behind Caddy on
+    // loopback set `REGISTRY_TRUSTED_PROXIES=127.0.0.1,::1`. Same class as
+    // facilitator GH#7: without this an attacker rotates XFF to defeat the
+    // per-IP flood guard.
+    REGISTRY_TRUSTED_PROXIES: z
+      .string()
+      .optional()
+      .transform((v) => {
+        if (!v) return new Set<string>();
+        return new Set<string>(
+          v
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0),
+        );
+      }),
   })
   .superRefine((data, ctx) => {
     const hasUrls =
@@ -63,6 +81,7 @@ export type RegistryEnv = {
   receiptWebhookSecret: string | undefined;
   endpointVerifyMode: EndpointVerifyMode;
   endpointVerifyTimeoutMs: number;
+  trustedProxies: ReadonlySet<string>;
 };
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): RegistryEnv {
@@ -84,5 +103,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): RegistryEnv {
     receiptWebhookSecret: e.RECEIPT_WEBHOOK_SECRET,
     endpointVerifyMode: e.ENDPOINT_VERIFY_MODE,
     endpointVerifyTimeoutMs: e.ENDPOINT_VERIFY_TIMEOUT_MS,
+    trustedProxies: e.REGISTRY_TRUSTED_PROXIES,
   };
 }

@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.30.0",
     "@hono/node-server": "^1.14.0",
     "@swarmwage/agent-sdk": "workspace:*",
+    "@swarmwage/example-seller-runtime": "workspace:*",
     "cheerio": "^1.0.0",
     "hono": "^4.6.0",
     "viem": "^2.30.0",

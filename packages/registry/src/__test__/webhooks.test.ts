@@ -3,9 +3,8 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { keccak256, toBytes } from "viem";
+import { canonicalize } from "@swarmwage/agent-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createApp } from "../app.js";
@@ -26,7 +25,7 @@ async function signCanonical(
   account: ReturnType<typeof privateKeyToAccount>,
   payload: object,
 ): Promise<`0x${string}`> {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const canonical = canonicalize(payload);
   const hash = keccak256(toBytes(canonical));
   return account.signMessage({ message: { raw: hash } });
 }
@@ -105,31 +104,27 @@ describe("POST /v1/receipts dispatches webhook with valid signature", () => {
     body: string;
   }
   const captured: CapturedRequest[] = [];
-  let serverUrl = "";
-  let server: ReturnType<typeof createServer>;
+  const originalFetch = globalThis.fetch;
+  const serverUrl = "https://webhook.test/hook";
 
-  before(async () => {
-    server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      const chunks: Buffer[] = [];
-      req.on("data", (c) => chunks.push(c as Buffer));
-      req.on("end", () => {
-        const body = Buffer.concat(chunks).toString("utf8");
-        const headers: Record<string, string> = {};
-        for (const [k, v] of Object.entries(req.headers)) {
-          headers[k.toLowerCase()] = Array.isArray(v) ? v.join(",") : (v ?? "");
-        }
-        captured.push({ method: req.method ?? "", headers, body });
-        res.statusCode = 204;
-        res.end();
+  before(() => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers: Record<string, string> = {};
+      const h = new Headers(init?.headers);
+      h.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
       });
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
-    const addr = server.address() as AddressInfo;
-    serverUrl = `http://127.0.0.1:${addr.port}/hook`;
+      captured.push({
+        method: init?.method ?? "GET",
+        headers,
+        body: typeof init?.body === "string" ? init.body : "",
+      });
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
   });
 
   after(() => {
-    server.close();
+    globalThis.fetch = originalFetch;
   });
 
   it("delivers a signed receipt.created payload after successful POST", async () => {

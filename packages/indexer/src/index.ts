@@ -14,6 +14,7 @@ import { logger as honoLogger } from "hono/logger";
 
 import { createChainContext, type ChainContext } from "./chain.js";
 import { loadEnv, type IndexerEnv } from "./env.js";
+import { createExternalResolver, type ExternalResolver } from "./external.js";
 import { createIndexer, type IndexerHandle, type IndexerLogger } from "./indexer.js";
 import { createRegistryClient, type RegistryResolver } from "./registry.js";
 import { InMemoryStore, PostgresStore, type IndexerStore } from "./store.js";
@@ -137,10 +138,15 @@ if (isEntry) {
   const registry: RegistryResolver = createRegistryClient({
     baseUrl: env.registryUrl,
   });
+  const external: ExternalResolver = createExternalResolver({
+    path: env.externalAddressesPath,
+    logger,
+  });
   const indexer = createIndexer({
     publicClient: chain.publicClient,
     store,
     registry,
+    external,
     network: chain.network,
     chainId: chain.chainId,
     startBlock: env.startBlock,

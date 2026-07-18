@@ -38,6 +38,7 @@ const { app } = createApp({
   webhookDispatcher,
   endpointVerifyMode: env.endpointVerifyMode,
   endpointVerifyTimeoutMs: env.endpointVerifyTimeoutMs,
+  trustedProxies: env.trustedProxies,
 });
 
 if (shouldListen) {
@@ -49,6 +50,18 @@ if (shouldListen) {
       `swarmwage-registry v0.0.1 listening on http://localhost:${info.port} (store=${storeKind})${hooks} endpoint-verify=${env.endpointVerifyMode}\n`,
     );
   });
+
+  // Keep the materialized reputation view fresh (Postgres only). 60s lag is
+  // acceptable for a reputation surface; the refresh is CONCURRENTLY so it
+  // never blocks /v1/search.
+  if (store?.refreshReputation) {
+    const timer = setInterval(() => {
+      store.refreshReputation?.().catch((err) => {
+        process.stderr.write(`reputation refresh failed: ${String(err)}\n`);
+      });
+    }, 60_000);
+    timer.unref();
+  }
 }
 
 export { app };

@@ -112,8 +112,52 @@ CREATE TABLE IF NOT EXISTS telemetry_events (
 );
 CREATE INDEX IF NOT EXISTS telemetry_ts_idx ON telemetry_events(ts DESC);
 
--- Reputation view (computed on-the-fly; promote to materialized view at scale)
-CREATE OR REPLACE VIEW reputation AS
+-- Buyer/client-observed reliability records for third-party x402 services.
+-- These are intentionally separate from seller-signed Swarmwage receipts:
+-- trust_level='client_observed' means useful reliability evidence, not a
+-- seller endorsement or Swarmwage guarantee.
+CREATE TABLE IF NOT EXISTS external_x402_reliability_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ts TIMESTAMPTZ NOT NULL,
+  trust_level TEXT NOT NULL CHECK (trust_level = 'client_observed'),
+  buyer_agent_id TEXT,
+  source TEXT,
+  service_id TEXT,
+  service_name TEXT,
+  category TEXT,
+  endpoint_description TEXT,
+  pricing_scheme TEXT,
+  url TEXT NOT NULL,
+  method TEXT NOT NULL,
+  status INTEGER NOT NULL CHECK (status BETWEEN 0 AND 599),
+  amount_paid_usdc TEXT,
+  tx_hash TEXT,
+  latency_ms INTEGER NOT NULL CHECK (latency_ms >= 0),
+  request_hash TEXT,
+  response_hash TEXT NOT NULL,
+  verifier_kind TEXT NOT NULL CHECK (verifier_kind IN ('none','json','custom')),
+  verifier_status TEXT NOT NULL CHECK (verifier_status IN ('unknown','pass','fail')),
+  verifier_checks JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS external_x402_reliability_service_ts_idx
+  ON external_x402_reliability_records(source, service_id, ts DESC);
+CREATE INDEX IF NOT EXISTS external_x402_reliability_url_ts_idx
+  ON external_x402_reliability_records(url, method, ts DESC);
+CREATE INDEX IF NOT EXISTS external_x402_reliability_tx_hash_idx
+  ON external_x402_reliability_records(tx_hash)
+  WHERE tx_hash IS NOT NULL;
+
+-- Reputation — MATERIALIZED so /v1/search joins a precomputed table instead
+-- of evaluating 6 correlated subqueries per agent on every query (the
+-- O(listings × hires) crash-risk under load). Refreshed on an interval by
+-- the server process (REFRESH MATERIALIZED VIEW CONCURRENTLY — needs the
+-- unique index below). Tradeoff: reputation (and a brand-new seller's
+-- visibility, since /v1/search INNER JOINs this) lags reality by up to one
+-- refresh interval — fine for a reputation surface that is "meaningful from
+-- Day 30+" anyway.
+CREATE MATERIALIZED VIEW IF NOT EXISTS reputation AS
 SELECT
   a.agent_id,
   a.claimed_by_handle IS NOT NULL AS claimed,
@@ -148,3 +192,7 @@ SELECT
     0
   ) AS avg_stars
 FROM agents a;
+
+-- Required for REFRESH MATERIALIZED VIEW CONCURRENTLY (non-blocking refresh).
+CREATE UNIQUE INDEX IF NOT EXISTS reputation_agent_id_idx
+  ON reputation(agent_id);

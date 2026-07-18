@@ -50,6 +50,54 @@ export interface TelemetryRecord {
   event: Record<string, unknown>;
 }
 
+export interface ExternalX402ReliabilityRecord {
+  id?: string;
+  ts: number;
+  trust_level: "client_observed";
+  buyer_agent_id: AgentId | null;
+  source?: string;
+  service_id?: string;
+  service_name?: string;
+  category?: string;
+  endpoint_description?: string;
+  pricing_scheme?: string;
+  url: string;
+  method: string;
+  status: number;
+  amount_paid_usdc?: string;
+  tx_hash?: `0x${string}`;
+  latency_ms: number;
+  request_hash?: `0x${string}`;
+  response_hash: `0x${string}`;
+  verifier_kind: "none" | "json" | "custom";
+  verifier_status: "unknown" | "pass" | "fail";
+  verifier_checks: Record<string, boolean>;
+  error?: string;
+}
+
+export interface ExternalX402ServiceReliability {
+  trust_level: "client_observed";
+  source?: string;
+  service_id?: string;
+  service_name?: string;
+  category?: string;
+  endpoint_description?: string;
+  pricing_scheme?: string;
+  url: string;
+  method: string;
+  calls: number;
+  paid_calls: number;
+  success_rate: number;
+  final_status_counts: Record<string, number>;
+  latency_ms: {
+    p50: number | null;
+    p95: number | null;
+  };
+  last_call_ts: number;
+  verifier_counts: Record<"unknown" | "pass" | "fail", number>;
+  tx_hash_coverage: number;
+}
+
 /**
  * Seller-submitted receipt — Layer 3 of the 4-layer data capture model.
  *
@@ -147,4 +195,20 @@ export interface RegistryStore {
 
   // Telemetry
   recordTelemetry(event: TelemetryRecord): Promise<void>;
+
+  // External x402 reliability (buyer/client-observed)
+  appendExternalX402ReliabilityRecord(
+    record: ExternalX402ReliabilityRecord,
+  ): Promise<{ id: string }>;
+  listExternalX402ServiceReliability(opts?: {
+    limit?: number;
+    source?: string;
+    service_id?: string;
+    url?: string;
+  }): Promise<ExternalX402ServiceReliability[]>;
+
+  // Recompute the materialized `reputation` view. Optional: only the
+  // Postgres store materializes reputation (the memory store computes it
+  // on read). Called on an interval by the server process.
+  refreshReputation?(): Promise<void>;
 }

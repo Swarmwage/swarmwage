@@ -1,0 +1,356 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Swarmwage
+#
+# Tournament topology — 1 wallet-svc sidecar + 10 agent containers +
+# 1 orchestrator + 1 leaderboard + 1 egress proxy (Tinyproxy).
+#
+# Network model:
+#   - All containers attached to `internal` (driver: bridge, internal: true)
+#     — no direct outbound internet.
+#   - `wallet-svc` and `egress-proxy` ALSO attached to `external` (default
+#     bridge) for the wallets/RPC and proxy egress respectively.
+#   - Each agent container's outbound HTTP(S) goes through `egress-proxy`,
+#     which whitelists destinations via Tinyproxy config (see ops/proxy/).
+#   - `leaderboard` is on `external` for public access.
+#
+# Caddy on the host VM terminates TLS at tournament.swarmwage.com and proxies
+# to the leaderboard container.
+
+# NOTE: x-agent anchor kept for DOCUMENTATION ONLY of the shared non-env
+# fields. Each agent service MUST inline its full `environment` block:
+# YAML merge keys (<<:) do not deep-merge mapping values — an inline
+# `environment:` REPLACES the anchor's `environment:` entirely, so every
+# agent must list every shared env var explicitly. See history: agent_02..10
+# previously booted without WALLET_SVC_URL because of this footgun.
+x-agent: &agent-base
+  build:
+    context: ../..
+    dockerfile: agent-runner/Dockerfile
+  read_only: true
+  tmpfs:
+    - /tmp:size=50m
+    - /agent/memory:size=20m,uid=1001
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 100
+  mem_limit: 256m
+  cpus: 0.5
+  restart: unless-stopped
+  depends_on:
+    - wallet-svc
+    - egress-proxy
+  networks:
+    - internal
+
+services:
+  wallet-svc:
+    build:
+      context: ../../wallet-svc
+      dockerfile: Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp:size=20m
+    volumes:
+      - ../../../../.tournament-secrets:/secrets:ro
+      - wallet-state:/state
+    environment:
+      PORT: 7000
+      BASE_RPC_URL: https://mainnet.base.org
+      # Auth boundary: tokens.json (per-wallet) mounted via /secrets;
+      # ORCHESTRATOR_TOKEN gates /internal/* fleet reads.
+      ORCHESTRATOR_TOKEN: "${ORCHESTRATOR_TOKEN}"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.25
+    restart: unless-stopped
+    networks:
+      - internal
+      - external  # RPC + balance reads need outbound
+
+  egress-proxy:
+    image: vimagick/tinyproxy:latest
+    volumes:
+      - ../proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    restart: unless-stopped
+    networks:
+      - internal
+      - external
+
+  orchestrator:
+    build:
+      context: ../..
+      dockerfile: orchestrator/Dockerfile
+    environment:
+      WALLET_SVC_URL: http://wallet-svc:7000
+      AGENT_IDS: agent_01,agent_02,agent_03,agent_04,agent_05,agent_06,agent_07,agent_08,agent_09,agent_10
+      ORCHESTRATOR_TOKEN: "${ORCHESTRATOR_TOKEN}"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    restart: unless-stopped
+    networks:
+      - internal
+      - external
+
+  leaderboard:
+    build:
+      context: ../../leaderboard
+      dockerfile: Dockerfile
+    environment:
+      WALLET_SVC_URL: http://wallet-svc:7000
+      PORT: 8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    restart: unless-stopped
+    networks:
+      - internal
+      - external
+
+  agent_01:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_01
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_01}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+  agent_02:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_02
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_02}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+  agent_03:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_03
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_03}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+
+  agent_04:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_04
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_04}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+
+  agent_05:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_05
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_05}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      GOOGLE_GENERATIVE_AI_API_KEY: "${GOOGLE_GENERATIVE_AI_API_KEY}"
+
+  agent_06:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_06
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_06}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      XAI_API_KEY: "${XAI_API_KEY}"
+
+  agent_07:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_07
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_07}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY}"
+
+  agent_08:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_08
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_08}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      MOONSHOT_API_KEY: "${MOONSHOT_API_KEY}"
+
+  agent_09:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_09
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_09}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      MISTRAL_API_KEY: "${MISTRAL_API_KEY}"
+
+  agent_10:
+    <<: *agent-base
+    environment:
+      AGENT_ID: agent_10
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_agent_10}"
+      REGISTRY_URL: https://api.swarmwage.com
+      LEADERBOARD_URL: https://tournament.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 120000
+      MAX_API_USD: 8
+      N_AGENTS: 10
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      GOOGLE_GENERATIVE_AI_API_KEY: "${GOOGLE_GENERATIVE_AI_API_KEY}"
+
+  # ----- External buyer-agents -----
+  # Two Claude Haiku 4.5 buyers, $10 USDC each, generate compound-order
+  # demand against the 10 internal agents. The buyer container has no
+  # seller HTTP surface — it only initiates hires.
+  buyer_01:
+    build:
+      context: ../..
+      dockerfile: buyer-agent/Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp:size=50m
+      - /agent/memory:size=20m,uid=1001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 100
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+    depends_on:
+      - wallet-svc
+      - egress-proxy
+    networks:
+      - internal
+    environment:
+      BUYER_ID: buyer_01
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_buyer_01}"
+      REGISTRY_URL: https://api.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 300000
+      MAX_API_USD: 1
+      STOP_BALANCE_USDC: "0.2"
+      TOURNAMENT_START_ISO: "${TOURNAMENT_START_ISO}"
+      TOURNAMENT_END_ISO: "${TOURNAMENT_END_ISO}"
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+  buyer_02:
+    build:
+      context: ../..
+      dockerfile: buyer-agent/Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp:size=50m
+      - /agent/memory:size=20m,uid=1001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 100
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+    depends_on:
+      - wallet-svc
+      - egress-proxy
+    networks:
+      - internal
+    environment:
+      BUYER_ID: buyer_02
+      WALLET_SVC_TOKEN: "${WALLET_SVC_TOKEN_buyer_02}"
+      REGISTRY_URL: https://api.swarmwage.com
+      WALLET_SVC_URL: http://wallet-svc:7000
+      TICK_INTERVAL_MS: 300000
+      MAX_API_USD: 1
+      STOP_BALANCE_USDC: "0.2"
+      TOURNAMENT_START_ISO: "${TOURNAMENT_START_ISO}"
+      TOURNAMENT_END_ISO: "${TOURNAMENT_END_ISO}"
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
+      NO_PROXY: "wallet-svc,leaderboard,orchestrator,localhost,127.0.0.1"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+volumes:
+  wallet-state:
+
+networks:
+  internal:
+    driver: bridge
+    internal: true   # no outbound from this network — must go through proxy
+  external:
+    driver: bridge

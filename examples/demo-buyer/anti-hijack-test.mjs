@@ -14,6 +14,7 @@ import {
   AgentClient,
   SellerMismatchError,
   PROTOCOL_VERSION,
+  canonicalize,
 } from "@swarmwage/agent-sdk";
 
 const REGISTRY_URL = "http://localhost:3010";
@@ -62,7 +63,7 @@ const ghostPayload = {
   first_call_free: true,
   endpoint: ENDPOINT,
 };
-const ghostCanonical = JSON.stringify(ghostPayload, Object.keys(ghostPayload).sort());
+const ghostCanonical = canonicalize(ghostPayload);
 const ghostHash = keccak256(toBytes(ghostCanonical));
 const ghostSig = await ghostAccount.signMessage({ message: { raw: ghostHash } });
 const ghostListing = { ...ghostPayload, signature: ghostSig };

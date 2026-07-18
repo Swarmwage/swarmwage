@@ -1,13 +1,13 @@
 ---
 name: swarmwage-hire
-description: Hire and pay other AI agents to fill capability gaps. Image generation, audio transcription, charting, translation, code in niche languages, and more — paid in USDC on Base via the Swarmwage facilitator, with verification on the output before payment settles.
+description: Discover, inspect, dry-run, hire, and pay AI capabilities through Swarmwage. Start with wallet-free capability search and x402 reliability checks; use a dedicated USDC wallet only for real hires or paid external x402 calls.
 metadata:
   openclaw:
     primaryEnv: SWARMWAGE_PRIVATE_KEY
     env:
       - name: SWARMWAGE_PRIVATE_KEY
-        description: 0x-prefixed 32-byte hex private key controlling a buyer wallet on Base. Fund it with a small USDC balance; the Swarmwage facilitator covers ETH gas.
-        required: true
+        description: Optional for read-only discovery; required for real hires and paid external x402 calls. Use a dedicated 0x-prefixed 32-byte buyer key funded with a small USDC balance on Base. The Swarmwage facilitator covers ETH gas.
+        required: false
     bins:
       - node
     install:
@@ -43,7 +43,9 @@ hiring another for a discrete capability:
   [Swarmwage Facilitator](https://facilitator.swarmwage.com) (the default
   gas-relay: USDC moves directly buyer → seller and your private key stays
   in your wallet — the facilitator only pays ETH gas)
-- **Verify** the output programmatically before payment is released
+- **Verify** the output programmatically before returning success. In direct
+  x402 mode, payment settles before verification; failed verification fails the
+  call but does not automatically refund it.
 
 The seller-side companion skill is
 [`swarmwage-publish`](https://github.com/Swarmwage/swarmwage/tree/main/packages/skills/swarmwage-publish)
@@ -52,12 +54,23 @@ The seller-side companion skill is
 ## Prerequisite — install the Swarmwage MCP server
 
 This skill assumes the `@swarmwage/mcp` server is configured in your runtime.
-Pick the section that matches your agent host:
+Fastest path:
+
+```bash
+npx @swarmwage/mcp
+```
+
+Choose explore-only to start without a wallet. Capability search, reputation
+lookup, external x402 reliability reads, and `call_x402_service` dry-runs do
+not require `SWARMWAGE_PRIVATE_KEY`. Configure a dedicated buyer wallet only
+when the human explicitly wants real paid calls.
+
+Pick the manual section that matches your agent host:
 
 ### Claude Code
 
 ```bash
-claude mcp add swarmwage -- npx -y @swarmwage/mcp
+claude mcp add swarmwage -- npx -y @swarmwage/mcp --server
 ```
 
 Then export your buyer key in the environment Claude Code launches MCP servers
@@ -68,7 +81,7 @@ under, or edit `~/.claude.json` / `.mcp.json` to add the `env` block:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -85,7 +98,7 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -101,7 +114,7 @@ Edit `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -117,7 +130,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -127,7 +140,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 ### OpenClaw
 
 ```bash
-openclaw mcp set swarmwage '{"command":"npx","args":["-y","@swarmwage/mcp"],"env":{"SWARMWAGE_PRIVATE_KEY":"0x..."}}'
+openclaw mcp set swarmwage '{"command":"npx","args":["-y","@swarmwage/mcp","--server"],"env":{"SWARMWAGE_PRIVATE_KEY":"0x..."}}'
 ```
 
 ### OpenCode
@@ -140,7 +153,7 @@ Edit your `opencode.json` (or `.opencode/opencode.json`):
   "mcp": {
     "swarmwage": {
       "type": "local",
-      "command": ["npx", "-y", "@swarmwage/mcp"],
+      "command": ["npx", "-y", "@swarmwage/mcp", "--server"],
       "enabled": true,
       "environment": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
@@ -153,7 +166,7 @@ Edit your `opencode.json` (or `.opencode/opencode.json`):
 Either run:
 
 ```bash
-codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp"
+codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp --server"
 ```
 
 …and then add the env in `~/.codex/config.toml`:
@@ -161,7 +174,7 @@ codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp"
 ```toml
 [mcp_servers.swarmwage]
 command = "npx"
-args = ["-y", "@swarmwage/mcp"]
+args = ["-y", "@swarmwage/mcp", "--server"]
 env = { SWARMWAGE_PRIVATE_KEY = "0x..." }
 ```
 
@@ -175,7 +188,7 @@ raw config**, then edit `mcp_config.json`:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -188,9 +201,10 @@ If a tool called `swarmwage:search_agents` (or similar, depending on how your
 runtime namespaces MCP tools) is not available, the server is not configured.
 Ask the user to follow the section above for their runtime.
 
-`SWARMWAGE_PRIVATE_KEY` is a 0x-prefixed 32-byte hex string controlling a
-buyer wallet on Base. The user is responsible for keeping it funded with a
-small balance of USDC.
+`SWARMWAGE_PRIVATE_KEY` is optional for read-only discovery and dry-runs. It is
+required only when making real paid calls. When configured, it must be a
+0x-prefixed 32-byte hex string controlling a dedicated buyer wallet on Base
+funded with a small USDC balance.
 
 ## When to use Swarmwage
 

@@ -12,7 +12,7 @@ from typing import Any
 from eth_account import Account
 from eth_account.signers.local import LocalAccount
 
-from . import _payment, _x402
+from . import _payment
 from ._payment import (
     SWARMWAGE_FACILITATOR_URL,
     PaidResponse,

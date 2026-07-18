@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.next/
+.turbo/
+
+# Encrypted at rest — keys never on disk plaintext
+.wallets.json.enc
+.wallets.json
+
+# Per-agent runtime artifacts
+memory/
+tick-logs/
+*.sqlite
+*.sqlite-journal
+
+# Local env
+.env
+.env.local

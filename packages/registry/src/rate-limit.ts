@@ -7,7 +7,7 @@
 // posture this is sufficient; once we scale horizontally, swap to
 // Cloudflare Turnstile / upstream WAF / a Redis bucket.
 
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 
 interface Bucket {
   tokens: number;
@@ -19,21 +19,64 @@ interface RateLimitOptions {
   refillPerSec: number;
   /** Max tokens a client can hold. Equals burst size. */
   burst: number;
-  /** Identifier function — defaults to a best-effort client IP. */
-  keyOf?: (c: Parameters<MiddlewareHandler>[0]) => string;
+  /** Identifier function — defaults to a trusted-proxy-aware client IP. */
+  keyOf?: (c: Context) => string;
+  /**
+   * IPs whose `X-Forwarded-For` / `X-Real-IP` headers the default key is
+   * allowed to trust. Empty/undefined ⇒ key exclusively on the raw socket
+   * address. Ignored when `keyOf` is supplied.
+   */
+  trustedProxies?: ReadonlySet<string>;
 }
 
-const DEFAULT_KEY = (
-  c: Parameters<MiddlewareHandler>[0],
-): string =>
-  c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-  c.req.header("x-real-ip") ||
-  c.req.header("cf-connecting-ip") ||
-  "unknown";
+/** Normalize IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to plain IPv4. */
+function normalizeIp(ip: string): string {
+  if (ip.startsWith("::ffff:")) return ip.slice("::ffff:".length);
+  return ip;
+}
+
+/**
+ * Best-effort client-IP extraction. The originating socket address is the
+ * only thing we can trust — it is established by the OS kernel from the TCP
+ * handshake and cannot be forged. Forwarded headers (`X-Forwarded-For`,
+ * `X-Real-IP`) are read ONLY when the socket peer is a configured trusted
+ * proxy. Without this gate any client can rotate `X-Forwarded-For` per
+ * request, defeating the per-IP bucket and turning the unauthenticated
+ * flood guard into a no-op (same class as facilitator GH#7).
+ *
+ * Operators behind Caddy/nginx on loopback set
+ * `REGISTRY_TRUSTED_PROXIES=127.0.0.1,::1`.
+ */
+export function clientIp(
+  c: Context,
+  trustedProxies?: ReadonlySet<string>,
+): string {
+  const env = c.env as
+    | { incoming?: { socket?: { remoteAddress?: string } } }
+    | undefined;
+  const rawRemote = env?.incoming?.socket?.remoteAddress;
+  const remote =
+    rawRemote && rawRemote.length > 0 ? normalizeIp(rawRemote) : "unknown";
+
+  if (trustedProxies && trustedProxies.size > 0 && trustedProxies.has(remote)) {
+    const xff = c.req.header("x-forwarded-for");
+    if (xff) {
+      const first = xff.split(",")[0];
+      if (first && first.trim().length > 0) {
+        return normalizeIp(first.trim());
+      }
+    }
+    const realIp = c.req.header("x-real-ip");
+    if (realIp && realIp.trim().length > 0) {
+      return normalizeIp(realIp.trim());
+    }
+  }
+  return remote;
+}
 
 export function rateLimit(opts: RateLimitOptions): MiddlewareHandler {
   const buckets = new Map<string, Bucket>();
-  const keyOf = opts.keyOf ?? DEFAULT_KEY;
+  const keyOf = opts.keyOf ?? ((c: Context) => clientIp(c, opts.trustedProxies));
 
   // Lazy GC: every 1024 requests, drop buckets unused for >5 minutes.
   let n = 0;

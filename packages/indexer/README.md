@@ -61,6 +61,7 @@ have safe defaults for local development:
 | `INDEX_INTERVAL_SECONDS`  | `60`                     | Seconds between idle ticks                                               |
 | `MAX_BLOCK_RANGE`         | `2000`                   | Max blocks per `eth_getLogs` call                                        |
 | `DATABASE_URL`            | unset (in-memory)        | Postgres connection string for the persistent store                      |
+| `EXTERNAL_ADDRESSES_PATH` | unset (disabled)         | Path to a JSON seed of known external recipient addresses (see below)    |
 | `LOG_LEVEL`               | `info`                   | One of `debug`, `info`, `warn`, `error`                                  |
 
 ## Run locally
@@ -97,6 +98,28 @@ docker run --rm -p 3002:3002 \
   -e REGISTRY_URL=https://registry.swarmwage.com \
   swarmwage-indexer
 ```
+
+## External address attribution
+
+By default the indexer tags each recipient against the Swarmwage registry
+(`recipient_agent_id`). It can *additionally* attribute volume to known
+**external** (non-Swarmwage) x402 endpoints — for example addresses sourced
+from a public x402 catalog — without registering them as agents.
+
+Point `EXTERNAL_ADDRESSES_PATH` at a JSON seed:
+
+```json
+[
+  { "address": "0x...", "source": "example-catalog", "label": "Example Service", "category": "Search" }
+]
+```
+
+Matching transfers are written with `recipient_source` / `recipient_label`
+(distinct from `recipient_agent_id`). The dataset is operator-supplied and not
+committed to this repository; the loader is a safe no-op when the path is unset
+or the file is missing/malformed — external attribution MUST NEVER block
+indexing. Query external volume with e.g.
+`SELECT recipient_source, recipient_label, SUM(value_usdc_atomic) FROM transactions WHERE recipient_source IS NOT NULL GROUP BY 1, 2`.
 
 ## Operational notes
 

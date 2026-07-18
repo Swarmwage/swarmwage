@@ -7,6 +7,85 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 License: MIT.
 
+## [0.7.2] — 2026-06-24
+
+### Added
+
+- `payX402` now submits best-effort client-observed reliability records for
+  external x402 calls and returns `reliability_record_id`, `request_hash`, and
+  `response_hash` when available.
+- `getExternalX402Reliability()` reads aggregate reliability evidence from the
+  registry.
+- `SWARMWAGE_RELIABILITY=0` opt-out for external x402 reliability submission.
+
+### Fixed
+
+- Release packaging now rebuilds before `npm pack`/publish so npm tarballs
+  cannot ship stale `dist` output.
+
+## [0.7.1] — 2026-06-23
+
+### Added
+
+- `payX402` accepts optional external-catalog attribution fields
+  (`source`, `service_id`, `service_name`, `endpoint_description`,
+  `category`, `pricing_scheme`). These fields are telemetry-only and do not
+  affect request signing, settlement, or the HTTP payload sent to the external
+  x402 service.
+- x402 telemetry now includes method, price cap, attribution metadata, and
+  settlement tx hash when available. This lets Swarmwage measure usage of
+  external x402 endpoints reached through the SDK/MCP without treating them as
+  Swarmwage-verified sellers.
+
+## [0.7.0] — 2026-06-19
+
+### Changed
+
+- **Payment layer migrated to x402 protocol v2.** Replaces
+  `x402`/`x402-fetch@1.2.0` (v1) with `@x402/core` + `@x402/evm` +
+  `@x402/fetch` (`~2.15.0`). A single client now pays both x402 **v2**
+  endpoints (requirements in the `Payment-Required` response header — most
+  of the Coinbase x402 catalog / agentic.market) and **v1** endpoints
+  (requirements in the body — our own x402-hono sellers). This supersedes
+  the 0.6.0 "Known limitation": header-transport (v2) endpoints are now
+  supported. Verified end to end on Base mainnet against a live
+  agentic.market endpoint.
+
+### Public API
+
+`hire()`, `hireAsync()` and `payX402()` keep the same signatures and
+return shapes; the change is entirely under the hood. The spend cap,
+network-force and anti-hijack (payTo must match the resolved seller)
+guarantees are preserved, and `SellerMismatchError` is still raised on a
+payTo mismatch.
+
+## [0.6.0] — 2026-06-18
+
+### Added
+
+- `payX402(req: PayX402Request): Promise<PayX402Response>` — pay an
+  external x402 endpoint from the buyer wallet, not just listings in the
+  Swarmwage registry. The SDK handles the HTTP 402 payment dance (USDC on
+  Base via EIP-3009) and returns `{ url, status, data, tx_hash,
+  amount_paid_usdc, latency_ms }`. Honors `max_price_usdc` as a spend cap.
+  Lets buyers reach standard x402 services through the same client.
+- `PayX402Request` / `PayX402Response` exported types.
+
+### Known limitation
+
+`payX402` reads the payment requirements from the 402 **response body**
+(the canonical `{ x402Version, accepts }` shape consumed by `x402-fetch`).
+Endpoints that advertise their requirements only through a
+`Payment-Required` response header (the x402-v2 / bazaar transport) are
+not yet supported — that path needs the `@x402/extensions` stack and is
+tracked as a follow-up. When requirements can't be read, the call errors
+rather than paying an unverified amount.
+
+### Note
+
+Supersedes the unpublished 0.5.2; folds in the `max_price_usdc`
+spend-cap fixes (0.5.1/0.5.2).
+
 ## [0.4.0] — 2026-05-12
 
 ### Added

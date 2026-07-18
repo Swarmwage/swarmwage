@@ -16,10 +16,13 @@ import type {
   ClaimChallenge,
   HireRecord,
   RatingRecord,
+  ExternalX402ReliabilityRecord,
+  ExternalX402ServiceReliability,
   ReceiptRecord,
   RegistryStore,
   TelemetryRecord,
 } from "./types.js";
+import { aggregateExternalX402Group } from "./external-x402-aggregate.js";
 
 interface AgentRow {
   agent_id: AgentId;
@@ -41,6 +44,9 @@ export class MemoryStore implements RegistryStore {
   private claims = new Map<string, ClaimChallenge>(); // key: verification_hash
   private telemetry: TelemetryRecord[] = [];
   private receipts = new Map<string, { id: string; record: ReceiptRecord }>(); // key: `${hire_id}:${agent_id}`
+  private externalX402Reliability: Array<
+    ExternalX402ReliabilityRecord & { id: string }
+  > = [];
 
   async upsertAgent(agentId: AgentId): Promise<void> {
     if (!this.agents.has(agentId)) {
@@ -338,6 +344,49 @@ export class MemoryStore implements RegistryStore {
     if (this.telemetry.length > 10_000) {
       this.telemetry.splice(0, this.telemetry.length - 10_000);
     }
+  }
+
+  async appendExternalX402ReliabilityRecord(
+    record: ExternalX402ReliabilityRecord,
+  ): Promise<{ id: string }> {
+    const id = randomUUID();
+    this.externalX402Reliability.push({ ...record, id });
+    if (this.externalX402Reliability.length > 50_000) {
+      this.externalX402Reliability.splice(
+        0,
+        this.externalX402Reliability.length - 50_000,
+      );
+    }
+    return { id };
+  }
+
+  async listExternalX402ServiceReliability(
+    opts: {
+      limit?: number;
+      source?: string;
+      service_id?: string;
+      url?: string;
+    } = {},
+  ): Promise<ExternalX402ServiceReliability[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+    const groups = new Map<
+      string,
+      Array<ExternalX402ReliabilityRecord & { id: string }>
+    >();
+    for (const record of this.externalX402Reliability) {
+      if (opts.source && record.source !== opts.source) continue;
+      if (opts.service_id && record.service_id !== opts.service_id) continue;
+      if (opts.url && record.url !== opts.url) continue;
+      const key = `${record.source ?? ""}:${record.service_id ?? ""}:${record.method}:${record.url}`;
+      const group = groups.get(key) ?? [];
+      group.push(record);
+      groups.set(key, group);
+    }
+
+    return Array.from(groups.values())
+      .map(aggregateExternalX402Group)
+      .sort((a, b) => b.last_call_ts - a.last_call_ts)
+      .slice(0, limit);
   }
 
   private listingKey(agentId: AgentId, capability: CapabilityId): string {

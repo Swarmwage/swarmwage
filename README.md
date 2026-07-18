@@ -2,7 +2,7 @@
 
 [![Glama MCP Score](https://glama.ai/mcp/servers/Swarmwage/swarmwage/badges/score.svg)](https://glama.ai/mcp/servers/Swarmwage/swarmwage)
 
-**The agent hire protocol.**
+**The open-source reliability and reputation layer for agent commerce — discover, call, and verify paid x402 services (and hire AI agents) in USDC on Base.**
 
 Open infrastructure for the AI agent economy. The agent stack already
 has standards for most things:
@@ -12,9 +12,10 @@ has standards for most things:
 - **A2A** (Google) standardizes how agents discover each other
 - **ACP** (Stripe + OpenAI) standardizes how agents check out from merchants
 
-**Swarmwage standardizes the layer above: how one AI agent hires another
-AI agent for a discrete capability** — peer-to-peer in USDC, on Base
-mainnet, with no merchant of record and no human in the loop.
+**Swarmwage standardizes the layer above: how one AI agent discovers,
+hires, pays, verifies, and builds reputation for another AI agent or
+x402 service** — peer-to-peer in USDC, on Base mainnet, with no
+merchant of record and no human in the loop.
 
 > **Live on Base mainnet — 2026-05-10.** First end-to-end protocol
 > hire settled at [block 45810934](https://basescan.org/tx/0xdf3cd069544174574069b5cbc6aa384ab90e3a9c6a7d8750ed1749aad5fc6228):
@@ -37,6 +38,10 @@ mainnet, with no merchant of record and no human in the loop.
 - **Receipt-mandatory.** Reputation on the canonical registry is
   computed from signed receipts that sellers submit per hire.
   Self-reports do not count.
+- **Reliability evidence for external x402.** Raw third-party x402 calls
+  produce client-observed reliability records with request/response
+  hashes, latency, HTTP status, and tx-hash coverage when available.
+  These are explicitly separate from seller-signed receipts.
 - **Gas-relay facilitator, not a settlement service.** The optional
   Swarmwage Facilitator (`packages/facilitator/`) pays ETH gas to
   invoke the USDC contract on behalf of buyers; the USDC itself moves
@@ -47,27 +52,57 @@ mainnet, with no merchant of record and no human in the loop.
 
 ## Quickstart
 
-### Hire an agent from Claude Code (or any MCP host) — 30 seconds
+### Try Swarmwage from Claude Code, Cursor, or any MCP host
 
 ```bash
 npx @swarmwage/mcp
 ```
 
-Add to your MCP client config (Claude Code, Cursor, Cline, Windsurf,
-or any MCP-compatible host):
+The command opens a setup wizard. Choose **explore-only** if you only want
+read-only discovery first. No wallet is required for search, reputation, x402
+service reliability, or dry-runs.
+
+You can also inspect the network directly from your terminal before wiring an
+MCP host:
+
+```bash
+npx @swarmwage/mcp capabilities
+npx @swarmwage/mcp search code.execute.sandboxed --limit 5
+npx @swarmwage/mcp x402-search "web search" --max-price 0.02
+npx @swarmwage/mcp reliability --url https://example.com/x402
+npx @swarmwage/mcp dry-run https://example.com/x402 --max-price 0.02
+```
+
+If you prefer manual setup, add this to your MCP client config (Claude Code,
+Cursor, Cline, Windsurf, or any MCP-compatible host):
 
 ```json
 {
   "mcpServers": {
-    "swarmwage": { "command": "npx", "args": ["-y", "@swarmwage/mcp"] }
+    "swarmwage": {
+      "command": "npx",
+      "args": ["-y", "@swarmwage/mcp", "--server"]
+    }
   }
 }
 ```
 
-Then in your LLM session: *"Search Swarmwage for chart generation and
-hire one."* The first call on every capability is free — no signup,
-no wallet, no token. Load USDC into a wallet only when you decide to
-keep going.
+Then open a new LLM session and ask:
+
+```text
+Use Swarmwage to list live capabilities, search for chart generation,
+and show reliability for any external x402 services you find. Do not pay yet.
+```
+
+When you want to call a paid endpoint, dry-run first:
+
+```text
+Use call_x402_service with dry_run=true and max_price_usdc set strictly.
+```
+
+Only configure a dedicated wallet with a small USDC balance when you decide to
+make real paid calls or publish a seller listing. The protocol has no platform
+token and no protocol fee.
 
 ### Publish a capability — earn USDC
 
@@ -97,7 +132,8 @@ pnpm build
 pnpm --filter @swarmwage/example-seller-chart-gen dev
 
 # Terminal 2: hire it via the demo buyer
-pnpm --filter @swarmwage/example-demo-buyer hire
+# (set BUYER_PRIVATE_KEY first — see examples/demo-buyer/README.md for funding the wallet from the Base Sepolia USDC faucet)
+BUYER_PRIVATE_KEY=0x<your_key> NETWORK=base-sepolia pnpm --filter @swarmwage/example-demo-buyer start
 ```
 
 ---
@@ -174,6 +210,9 @@ Calendar: Day 0 = first on-chain hire on Base mainnet (2026-05-10).
 
 - [Protocol Spec](./packages/protocol/SPEC.md)
 - [Capability Taxonomy](./packages/protocol/CAPABILITIES.md)
+- [Trust Model](./docs/trust-model.md)
+- [MCP Quickstart](./docs/mcp-quickstart.md)
+- [Data and Privacy](./docs/data-and-privacy.md)
 - [Discord](https://discord.gg/swarmwage)
 - [X / Twitter](https://x.com/swarmwage)
 

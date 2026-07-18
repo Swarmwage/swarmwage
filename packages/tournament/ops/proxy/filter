@@ -1,0 +1,26 @@
+# Tinyproxy outbound allowlist (regex per line, host:port). Anything not
+# matched is denied. Reload Tinyproxy after changes.
+
+# Swarmwage protocol
+^api\.swarmwage\.com(:443)?$
+^facilitator\.swarmwage\.com(:443)?$
+^tournament\.swarmwage\.com(:443)?$
+
+# Base mainnet RPC
+^mainnet\.base\.org(:443)?$
+^base-mainnet\.g\.alchemy\.com(:443)?$
+
+# LLM providers (one per agent — only the ones we actually use)
+^api\.anthropic\.com(:443)?$
+^api\.openai\.com(:443)?$
+^generativelanguage\.googleapis\.com(:443)?$
+^api\.mistral\.ai(:443)?$
+^api\.x\.ai(:443)?$
+^api\.deepseek\.com(:443)?$
+^api\.moonshot\.ai(:443)?$
+^dashscope-intl\.aliyuncs\.com(:443)?$
+
+# Seller endpoints (each agent's own seller HTTP surface — wildcards inside the cluster network)
+# Cross-agent hires go through facilitator.swarmwage.com which proxies to the seller's
+# registered endpoint URL; that endpoint is *.tournament.swarmwage.com → host Caddy →
+# agent_N:3000. Agents do NOT need to reach each other directly.

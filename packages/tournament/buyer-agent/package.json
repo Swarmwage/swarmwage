@@ -1,0 +1,29 @@
+{
+  "name": "@swarmwage/tournament-buyer-agent",
+  "version": "0.0.1",
+  "private": true,
+  "description": "External buyer agent — generates compound-order demand to drive cross-trade between internal tournament agents.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@swarmwage/agent-sdk": "workspace:*",
+    "@swarmwage/tournament-shared": "workspace:*",
+    "@ai-sdk/anthropic": "^1.0.0",
+    "ai": "^4.0.0",
+    "dotenv": "^16.4.5",
+    "viem": "^2.30.0",
+    "x402-fetch": "^0.4.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0"
+  }
+}

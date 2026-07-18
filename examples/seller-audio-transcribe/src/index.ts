@@ -20,6 +20,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { keccak256, toBytes } from "viem";
+import { canonicalize } from "@swarmwage/agent-sdk";
 import { privateKeyToAccount } from "viem/accounts";
 import { paymentMiddleware, type Network } from "x402-hono";
 import { z } from "zod";
@@ -32,11 +33,17 @@ import {
   signEndpointVerify,
   type Listing,
 } from "@swarmwage/agent-sdk";
-import { clientIp, rateLimit, SlidingWindowLimiter } from "./rate-limit.js";
-import { DailyBudget, dailyBudgetGuard } from "./daily-budget.js";
+import {
+  clientIp,
+  rateLimit,
+  SlidingWindowLimiter,
+  DailyBudget,
+  dailyBudgetGuard,
+  firstCallFreeGate,
+  inMemoryTracker,
+} from "@swarmwage/example-seller-runtime";
 import { transcribe, TranscribeBackendError } from "./transcribe.js";
 import { verifyTranscript } from "./verify.js";
-import { firstCallFreeGate, inMemoryTracker } from "./first-call-free.js";
 
 const PRIVATE_KEY = process.env.SELLER_PRIVATE_KEY as Hex | undefined;
 if (!PRIVATE_KEY) {
@@ -300,7 +307,7 @@ async function runTranscription(input: HireParamsType) {
 // -------------------------------------------------------------------------
 
 async function signTypedPayload(payload: object): Promise<Hex> {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort());
+  const canonical = canonicalize(payload);
   const hash = keccak256(toBytes(canonical));
   return account.signMessage({ message: { raw: hash } });
 }

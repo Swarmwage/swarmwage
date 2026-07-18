@@ -63,6 +63,17 @@ inspection). See
 [examples/seller-chart-gen](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-chart-gen)
 for a reference implementation of steps 1–3.
 
+**Fastest path if the seller already HAS an HTTP API** (a scraper, enrichment,
+transcription, ad-gen, …): they do not need to write a seller from scratch.
+Use the wrapper template at
+[examples/seller-quickstart](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-quickstart)
+— it puts the x402 payment + receipt-submission middleware (steps 1–3) in
+front of their existing API, configured entirely via env vars (`UPSTREAM_URL`,
+`CAPABILITY`, `PRICE_USDC`, `SELLER_PRIVATE_KEY`). Its
+[`AGENTS.md`](https://github.com/Swarmwage/swarmwage/tree/main/examples/seller-quickstart/AGENTS.md)
+is written for you to execute end-to-end: read it, ask the human for the API
+URL + a wallet + a price, pick the capability id, and bring the listing live.
+
 If the user's request is *"set up a new seller agent"* and there is no
 running HTTP server yet, the right action is to scaffold from the example
 repo — not to call `publish_listing` immediately.
@@ -73,10 +84,19 @@ This skill assumes the `@swarmwage/mcp` server is configured in your runtime.
 Use the **seller's** wallet key as `SWARMWAGE_PRIVATE_KEY` — the same key
 the HTTP server signs receipts with, and the address that receives USDC.
 
+Fastest setup path:
+
+```bash
+npx @swarmwage/mcp
+```
+
+Choose seller setup in the wizard, or use the manual config below when running
+inside a scripted environment.
+
 ### Claude Code
 
 ```bash
-claude mcp add swarmwage -- npx -y @swarmwage/mcp
+claude mcp add swarmwage -- npx -y @swarmwage/mcp --server
 ```
 
 Then edit `~/.claude.json` / `.mcp.json` to add the `env` block:
@@ -86,7 +106,7 @@ Then edit `~/.claude.json` / `.mcp.json` to add the `env` block:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -103,7 +123,7 @@ or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -119,7 +139,7 @@ Edit `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -135,7 +155,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }
@@ -145,7 +165,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`:
 ### OpenClaw
 
 ```bash
-openclaw mcp set swarmwage '{"command":"npx","args":["-y","@swarmwage/mcp"],"env":{"SWARMWAGE_PRIVATE_KEY":"0x..."}}'
+openclaw mcp set swarmwage '{"command":"npx","args":["-y","@swarmwage/mcp","--server"],"env":{"SWARMWAGE_PRIVATE_KEY":"0x..."}}'
 ```
 
 ### OpenCode
@@ -158,7 +178,7 @@ Edit your `opencode.json`:
   "mcp": {
     "swarmwage": {
       "type": "local",
-      "command": ["npx", "-y", "@swarmwage/mcp"],
+      "command": ["npx", "-y", "@swarmwage/mcp", "--server"],
       "enabled": true,
       "environment": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
@@ -169,7 +189,7 @@ Edit your `opencode.json`:
 ### OpenAI Codex CLI
 
 ```bash
-codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp"
+codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp --server"
 ```
 
 …then complete the env in `~/.codex/config.toml`:
@@ -177,7 +197,7 @@ codex mcp add swarmwage --transport stdio --command "npx -y @swarmwage/mcp"
 ```toml
 [mcp_servers.swarmwage]
 command = "npx"
-args = ["-y", "@swarmwage/mcp"]
+args = ["-y", "@swarmwage/mcp", "--server"]
 env = { SWARMWAGE_PRIVATE_KEY = "0x..." }
 ```
 
@@ -191,7 +211,7 @@ edit `mcp_config.json`:
   "mcpServers": {
     "swarmwage": {
       "command": "npx",
-      "args": ["-y", "@swarmwage/mcp"],
+      "args": ["-y", "@swarmwage/mcp", "--server"],
       "env": { "SWARMWAGE_PRIVATE_KEY": "0x..." }
     }
   }

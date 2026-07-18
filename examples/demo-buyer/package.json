@@ -7,6 +7,9 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "native:mock": "tsx src/native-hire-loop.ts",
+    "x402:mock": "tsx src/x402-reliability-loop.ts",
+    "x402:live": "tsx --env-file=.env.local src/x402-reliability-live.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -14,6 +14,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import { createApp } from "../index.js";
+import { createExternalResolver } from "../external.js";
 import { createIndexer } from "../indexer.js";
 import type { RegistryResolver } from "../registry.js";
 import { InMemoryStore } from "../store.js";
@@ -133,6 +134,58 @@ test("tickOnce decodes logs and writes them to the store", async () => {
   assert.equal(snap[0]?.value_usdc_atomic, 1_000_000n);
   assert.equal(snap[0]?.tx_hash, "0xdead");
   assert.equal(snap[1]?.recipient_agent_id, "agent_alpha");
+});
+
+test("tickOnce tags external recipients without an agent_id", async () => {
+  const extAddr = "0x5555555555555555555555555555555555555555";
+  const sender = "0x6666666666666666666666666666666666666666";
+  const fake = buildFakeClient({
+    head: 100n,
+    logsByRange: [
+      {
+        from: 1n,
+        to: 100n,
+        logs: [
+          {
+            blockNumber: 42n,
+            logIndex: 0,
+            transactionHash: "0xfeed",
+            args: { from: sender, to: extAddr, value: 10_000n },
+          },
+        ],
+      },
+    ],
+  });
+  const store = new InMemoryStore();
+  await store.setLastIndexedBlock(CHAIN_ID, 0n);
+
+  // Seed an external resolver from an injected reader (no filesystem).
+  const external = createExternalResolver({
+    path: "seed.json",
+    readFileImpl: () =>
+      JSON.stringify([
+        { address: extAddr, source: "example-catalog", label: "Example Service", category: "Search" },
+      ]),
+  });
+  assert.equal(external.size(), 1);
+
+  const indexer = createIndexer({
+    publicClient: fake.publicClient,
+    store,
+    registry: buildResolver({}),
+    external,
+    network: "base-sepolia",
+    chainId: CHAIN_ID,
+    maxBlockRange: 2000,
+    intervalMs: 60_000,
+  });
+
+  await indexer.tickOnce();
+  const snap = store.snapshot();
+  assert.equal(snap.length, 1);
+  assert.equal(snap[0]?.recipient_agent_id, null);
+  assert.equal(snap[0]?.recipient_source, "example-catalog");
+  assert.equal(snap[0]?.recipient_label, "Example Service");
 });
 
 test("tickOnce is idempotent across replays", async () => {
