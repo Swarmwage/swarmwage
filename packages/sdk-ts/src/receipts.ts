@@ -32,6 +32,13 @@ export interface ReceiptPayload {
   hire_id: string;
   /** Seller (signer). Lowercase 0x address. */
   agent_id: AgentId;
+  /**
+   * Settled payment recipient, when distinct from `agent_id` (GH #11).
+   * MUST equal the `payee` bound into the seller's signed listing — the same
+   * tuple the buyer's anti-hijack check validated. Omit for single-EOA
+   * sellers (payments went to `agent_id`).
+   */
+  payee?: AgentId;
   /** Buyer address (informational). */
   buyer: AgentId;
   capability: CapabilityId;

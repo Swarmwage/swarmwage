@@ -100,7 +100,26 @@ export class MemoryStore implements RegistryStore {
     if (!this.listingFirstSeen.has(key)) {
       this.listingFirstSeen.set(key, Date.now());
     }
-    this.listings.set(key, listing);
+    // Normalize payee for address-equality lookups, mirroring how agent_id
+    // is lowercased in the Postgres store.
+    this.listings.set(
+      key,
+      listing.payee
+        ? { ...listing, payee: listing.payee.toLowerCase() as AgentId }
+        : listing,
+    );
+  }
+
+  async getAgentIdByPayee(payee: string): Promise<AgentId | null> {
+    const needle = payee.toLowerCase();
+    // Mirror the Postgres store: ambiguous claims (two distinct agents
+    // declaring the same payee) resolve to null, not first-writer-wins.
+    const owners = new Set<string>();
+    for (const listing of this.listings.values()) {
+      if (listing.payee === needle) owners.add(listing.agent_id.toLowerCase());
+    }
+    if (owners.size !== 1) return null;
+    return [...owners][0] as AgentId;
   }
 
   async getListing(agentId: AgentId, capability: CapabilityId): Promise<Listing | null> {
@@ -188,6 +207,7 @@ export class MemoryStore implements RegistryStore {
           max_latency_ms: listing.max_latency_ms,
           first_call_free: listing.first_call_free,
           endpoint: listing.endpoint,
+          ...(listing.payee ? { payee: listing.payee } : {}),
         },
         reputation: rep
           ? {

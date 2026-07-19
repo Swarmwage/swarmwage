@@ -160,3 +160,69 @@ describe("seller runtime contracts", () => {
     assert.equal(body.reason, "daily hire cap reached (1)");
   });
 });
+
+// Separate payee (GH #11): the runtime binds ONE payment recipient — the
+// declared payee — into the signed listing, the x402 middleware, and the
+// receipt. No private key for the payee ever enters the process; the
+// runtime holds only the identity key.
+describe("separate payee (GH #11)", () => {
+  const PAYEE = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  const IDENTITY = privateKeyToAccount(PRIVATE_KEY).address.toLowerCase();
+
+  it("binds the payee into the published listing payload (signed)", async () => {
+    process.env.SELLER_PAYEE_ADDRESS = PAYEE;
+    const originalFetch = globalThis.fetch;
+    let published: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      published = (await req.json()) as Record<string, unknown>;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await runtime().publishListing();
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.SELLER_PAYEE_ADDRESS;
+    }
+    assert.ok(published, "listing must be published");
+    assert.equal(published.payee, PAYEE.toLowerCase());
+    assert.equal(published.agent_id, IDENTITY);
+    assert.notEqual(published.payee, published.agent_id);
+    assert.ok(published.signature, "listing must be signed");
+  });
+
+  it("omits the payee key entirely for legacy single-EOA sellers", async () => {
+    const originalFetch = globalThis.fetch;
+    let published: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      published = (await req.json()) as Record<string, unknown>;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      await runtime().publishListing();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assert.ok(published, "listing must be published");
+    assert.ok(
+      !("payee" in published),
+      "legacy payload must stay byte-identical (no payee key)",
+    );
+  });
+
+  it("rejects a malformed SELLER_PAYEE_ADDRESS at startup (fail-fast)", () => {
+    process.env.SELLER_PAYEE_ADDRESS = "not-an-address";
+    try {
+      assert.throws(() => runtime(), /SELLER_PAYEE_ADDRESS/);
+    } finally {
+      delete process.env.SELLER_PAYEE_ADDRESS;
+    }
+  });
+});

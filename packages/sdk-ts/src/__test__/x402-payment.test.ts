@@ -559,3 +559,140 @@ describe("hire — v1 payment flow (our own sellers) + anti-hijack", () => {
     );
   });
 });
+
+// Separate payee (GH #11): the anti-hijack comparison target is the listing's
+// SIGNED payee when present, falling back to agent_id when absent (the
+// fallback is what every pre-payee test above already exercises).
+describe("hire — separate payee (GH #11)", () => {
+  const SELLER_ENDPOINT = "https://seller.example";
+  const PAYEE = "0x00000000000000000000000000000000000000fe" as AgentId;
+
+  function payeeSearchResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        agents: [
+          {
+            agent_id: SELLER,
+            listing: {
+              agent_id: SELLER,
+              payee: PAYEE,
+              capability: "custom.test.echo",
+              price_usdc: "0.05",
+              currency: "USDC",
+              chain: "base",
+              max_latency_ms: 5000,
+              first_call_free: false,
+              endpoint: SELLER_ENDPOINT,
+              signature: "0xabc",
+            },
+            reputation: {
+              success_rate: 1,
+              avg_latency_ms: 100,
+              last_30d_hire_count: 5,
+              avg_stars: 5,
+              total_ratings: 3,
+              claimed: false,
+            },
+          },
+        ],
+        next_cursor: null,
+        match: "exact",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  function mockHireFetch(
+    challengePayTo: string,
+    calls: RecordedCall[],
+  ): typeof fetch {
+    return (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const req = input instanceof Request ? input : new Request(input, init);
+      const hasPaymentHeader =
+        req.headers.has("X-PAYMENT") || req.headers.has("PAYMENT-SIGNATURE");
+      calls.push({ url: req.url, method: req.method, hasPaymentHeader });
+      if (req.url.includes("/v1/search")) return payeeSearchResponse();
+      if (!hasPaymentHeader) {
+        return new Response(
+          JSON.stringify(challengeV1(challengePayTo, "50000")),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const TX = "0x" + "fe".repeat(32);
+      const settle = settlementHeader(TX, "50000");
+      return new Response(
+        JSON.stringify({
+          protocol: PROTOCOL_VERSION,
+          receipt: {
+            receipt_id: "r-payee",
+            buyer_id: "0x00000000000000000000000000000000000000b2",
+            seller_id: SELLER,
+            capability: "custom.test.echo",
+            tx_hash: TX,
+            price_paid_usdc: "0.05",
+            completed_at: Math.floor(Date.now() / 1000),
+          },
+          result: { ok: true },
+          verification: { checks: [], all_passed: true },
+          rating_token: "tok-payee",
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Payment-Response": settle,
+            "X-Payment-Response": settle,
+          },
+        },
+      );
+    }) as typeof fetch;
+  }
+
+  test("pays when the 402 payTo matches the listing's signed payee", async (t) => {
+    const original = globalThis.fetch;
+    const calls: RecordedCall[] = [];
+    globalThis.fetch = mockHireFetch(PAYEE, calls);
+    t.after(() => void (globalThis.fetch = original));
+
+    const res = await new AgentClient({
+      privateKey: TEST_PRIVATE_KEY,
+      telemetry: false,
+    }).hire({
+      capability: "custom.test.echo",
+      params: {},
+      max_price_usdc: "0.05",
+    });
+    assert.equal(res.receipt.receipt_id, "r-payee");
+    const sellerHits = calls.filter((c) => c.url.startsWith(SELLER_ENDPOINT));
+    assert.equal(sellerHits.length, 2, "unsigned 402 then signed retry");
+    assert.equal(sellerHits[1]?.hasPaymentHeader, true);
+  });
+
+  test("refuses when the 402 payTo is the agent_id instead of the signed payee", async (t) => {
+    // A hijacked/misconfigured seller demanding payment to the identity key
+    // while the listing binds a payee must be refused: the comparison target
+    // is the signed payee, not the agent_id.
+    const original = globalThis.fetch;
+    const calls: RecordedCall[] = [];
+    globalThis.fetch = mockHireFetch(SELLER, calls);
+    t.after(() => void (globalThis.fetch = original));
+
+    await assert.rejects(
+      new AgentClient({ privateKey: TEST_PRIVATE_KEY, telemetry: false }).hire({
+        capability: "custom.test.echo",
+        params: {},
+        max_price_usdc: "0.05",
+      }),
+      (err: unknown) =>
+        err instanceof SellerMismatchError ||
+        err instanceof InsufficientFundsError,
+    );
+    assert.ok(
+      !calls.some((c) => c.hasPaymentHeader),
+      "must never sign a payment to an address other than the signed payee",
+    );
+  });
+});

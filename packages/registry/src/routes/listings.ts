@@ -14,6 +14,14 @@ import { invalidJsonResponse, readJsonBody } from "../http.js";
 
 const ListingSchema = z.object({
   agent_id: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  // Optional split of payment recipient from seller identity (GH #11): the
+  // runtime holds only the identity/signing key, revenue lands on `payee`.
+  // Covered by the listing signature like every other field — tampering
+  // invalidates it. Absent ⇒ payments go to agent_id (legacy single-EOA).
+  payee: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
   // ASCII-only lowercase taxonomy. Rejects empty strings, Unicode
   // homoglyphs (e.g. Cyrillic `і` U+0456 squatting on Latin `image…`),
   // and uppercase or whitespace garbage that would fragment the namespace.
@@ -223,11 +231,14 @@ export interface ListingsLookupDeps {
 
 // Recipient → agent_id resolver. Used by the indexer to map an on-chain
 // USDC `Transfer` event recipient to a known Swarmwage agent for L2 data
-// capture. Today `agent_id` IS the wallet address — the lookup is a
-// simple existence check on the agents table.
+// capture. For legacy sellers `agent_id` IS the wallet address (existence
+// check on the agents table); payee-split sellers (GH #11) are resolved
+// through the `payee` declared in their active listings, so on-chain volume
+// landing on the payee still attributes to the publishing agent.
 //
 //   GET /v1/listings?recipient=0x...
-//   200 { agent_id, recipient }   — recipient is a registered agent
+//   200 { agent_id, recipient }   — recipient is a registered agent or a
+//                                   listing payee (agent_id = the publisher)
 //   404                           — recipient is not registered
 //   400                           — missing or malformed recipient
 export function createListingsLookupHandler(deps: ListingsLookupDeps) {
@@ -247,12 +258,13 @@ export function createListingsLookupHandler(deps: ListingsLookupDeps) {
     }
     const normalized = recipient.toLowerCase() as AgentId;
     const agent = await store.getAgent(normalized);
-    if (!agent) {
-      return c.json(
-        { error: "No agent registered for this recipient" },
-        404,
-      );
+    if (agent) {
+      return c.json({ agent_id: normalized, recipient: normalized });
     }
-    return c.json({ agent_id: normalized, recipient: normalized });
+    const payeeOwner = await store.getAgentIdByPayee(normalized);
+    if (payeeOwner) {
+      return c.json({ agent_id: payeeOwner, recipient: normalized });
+    }
+    return c.json({ error: "No agent registered for this recipient" }, 404);
   };
 }

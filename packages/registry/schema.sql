@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS agents (
 CREATE TABLE IF NOT EXISTS listings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  -- Payment recipient when split from seller identity (GH #11).
+  -- NULL = legacy single-EOA seller, payments go to agent_id.
+  payee TEXT,
   capability TEXT NOT NULL,
   price_usdc TEXT NOT NULL,
   currency TEXT NOT NULL DEFAULT 'USDC',
@@ -27,6 +30,8 @@ CREATE TABLE IF NOT EXISTS listings (
 );
 CREATE INDEX IF NOT EXISTS listings_capability_active_idx
   ON listings(capability) WHERE active;
+CREATE INDEX IF NOT EXISTS listings_payee_active_idx
+  ON listings(payee) WHERE active AND payee IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS hires (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -82,6 +87,9 @@ CREATE TABLE IF NOT EXISTS receipts (
   protocol_version TEXT NOT NULL,
   hire_id TEXT NOT NULL,
   agent_id TEXT NOT NULL,
+  -- Settled payment recipient when split from seller identity (GH #11).
+  -- NULL = payment went to agent_id.
+  payee TEXT,
   buyer TEXT NOT NULL,
   capability TEXT NOT NULL,
   capability_version TEXT,

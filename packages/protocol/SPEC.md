@@ -161,6 +161,23 @@ Cluster signals are heuristic. Legitimate agents from a single developer (e.g. a
 
 The cluster signal does NOT prevent operation. Clustered agents continue to hire, sell, accept hires, and accumulate reputation from outside the cluster at full weight. Cluster membership only flattens self-referential trust.
 
+### 4.6 Separate payee (non-spend-capable seller identities)
+
+By default the seller's AgentID plays three roles at once: identity, signer of protocol records (listings, receipts, endpoint proofs), and x402 payment recipient. A compromised seller runtime therefore holds a key that can also spend all accumulated revenue.
+
+A listing MAY declare an optional `payee` — a second address, distinct from `agent_id`, that receives payments:
+
+- `payee` is bound into the signed listing like every other field. Tampering with it invalidates the listing signature.
+- Buyers validate the seller's x402 challenge against the **signed payee** (falling back to `agent_id` when absent). A challenge whose `payTo` differs from the signed recipient MUST be refused before any payment authorization is signed.
+- Receipts bind both `agent_id` (the signer) and `payee` (the settled recipient). The registry rejects a receipt whose `payee` differs from the payee bound into the seller's live listing for that capability. The value the buyer validated and the value the receipt binds are the same signed field — implementations MUST NOT re-derive or re-normalize it between the two checks.
+- The indexer attributes on-chain volume received by a `payee` to the agent that published the listing declaring it.
+
+This lets a seller runtime hold only the identity/signing key while revenue lands on an address whose private key never touches the serving host. The identity key still signs protocol records; it gains no spend authority over the payee. Rotation is explicit: publishing an updated signed listing with a new `payee` re-binds future payments; already-settled funds never move. Sellers SHOULD drain in-flight hires before rotating — a receipt declaring the previous payee submitted after the listing re-binds is rejected by the registry's consistency check (v0.3 accepts only the currently-listed payee; a grace window for the immediately-previous signed payee is deferred to v0.4).
+
+Two registry-side guards close the residual attribution surface: (a) a `payee` address claimed by more than one distinct agent resolves to **no** attribution (ambiguity is refused, not first-writer-wins); (b) a receipt may declare a `payee` other than `agent_id` only when a live listing binds that payee for the receipt's capability.
+
+Absent `payee`, behavior is unchanged: payments go to `agent_id` (legacy single-EOA sellers remain fully conformant).
+
 ---
 
 ## 5. Capability system

@@ -56,6 +56,14 @@ export interface SellerRuntimeOptions {
   identity: {
     privateKey: Hex;
     serviceName: string;
+    /**
+     * Payment recipient address, when split from the identity key (GH #11).
+     * Address ONLY — its private key never touches this process. Payments
+     * land here; the identity key signs listings/receipts/endpoint proofs
+     * but cannot spend revenue. Wire via SELLER_PAYEE_ADDRESS. Omit for the
+     * legacy single-EOA setup (payments go to the identity address).
+     */
+    payeeAddress?: AgentId;
   };
   listing: {
     capability: string;
@@ -96,6 +104,20 @@ export function priceUsdcToAtomic(price: string): string {
 export function createSellerRuntime(opts: SellerRuntimeOptions) {
   const account = privateKeyToAccount(opts.identity.privateKey);
   const agentId = account.address.toLowerCase() as AgentId;
+  // The ONE address payments go to: the declared payee or the identity
+  // address. Used consistently for the listing's signed payee, the x402
+  // middleware payTo, and the receipt — the same signed tuple end to end.
+  // SELLER_PAYEE_ADDRESS is the env-driven default so every seller built on
+  // this runtime gets the split without per-seller wiring.
+  const rawPayee =
+    opts.identity.payeeAddress ?? process.env.SELLER_PAYEE_ADDRESS;
+  if (rawPayee && !/^0x[a-fA-F0-9]{40}$/.test(rawPayee)) {
+    throw new Error(
+      `${opts.identity.serviceName}: SELLER_PAYEE_ADDRESS must be a 0x-prefixed 20-byte address (got ${rawPayee.slice(0, 12)}…)`,
+    );
+  }
+  const payee = rawPayee?.toLowerCase() as AgentId | undefined;
+  const payTo = payee ?? (account.address as `0x${string}`);
   const tracker = inMemoryTracker();
   const app = new Hono<SellerEnv>();
 
@@ -108,6 +130,9 @@ export function createSellerRuntime(opts: SellerRuntimeOptions) {
   async function publishListing(): Promise<void> {
     const payload = {
       agent_id: agentId,
+      // Only present when split — legacy payloads stay byte-identical so
+      // existing single-EOA listing signatures verify unchanged.
+      ...(payee ? { payee } : {}),
       capability: opts.listing.capability,
       price_usdc: opts.listing.priceUsdc,
       currency: "USDC" as const,
@@ -197,7 +222,7 @@ export function createSellerRuntime(opts: SellerRuntimeOptions) {
   });
 
   const paid = paymentMiddleware(
-    account.address,
+    payTo,
     {
       "POST /hire": {
         price: `$${opts.listing.priceUsdc}`,
@@ -251,6 +276,7 @@ export function createSellerRuntime(opts: SellerRuntimeOptions) {
         protocol_version: PROTOCOL_VERSION,
         hire_id: receiptId,
         agent_id: agentId,
+        ...(payee ? { payee } : {}),
         buyer: (body.buyer_id?.toLowerCase() as AgentId) ?? ZERO_AGENT,
         capability: body.capability ?? opts.listing.capability,
         amount_usdc_atomic: freeCall

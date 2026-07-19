@@ -29,6 +29,14 @@ export type Hex = `0x${string}`;
 
 export const ListingSchema = z.object({
   agent_id: z.string().regex(/^0x[a-fA-F0-9]{40}$/) as z.ZodType<AgentId>,
+  /**
+   * Payment recipient, when distinct from `agent_id`. Lets the seller runtime
+   * hold only the identity/signing key while revenue lands on an address whose
+   * key never touches the box (GH #11). Covered by the listing signature like
+   * every other field; buyers compare the x402 challenge's `payTo` against
+   * this value. Absent ⇒ payments go to `agent_id`.
+   */
+  payee: (z.string().regex(/^0x[a-fA-F0-9]{40}$/) as z.ZodType<AgentId>).optional(),
   capability: z.string(),
   price_usdc: z.string().regex(/^\d+(\.\d+)?$/),
   currency: z.literal("USDC").default("USDC"),
@@ -133,6 +141,12 @@ export interface HireRequest {
   agent_id?: AgentId;
   /** Seller endpoint. If omitted, SDK resolves via search. */
   endpoint?: string;
+  /**
+   * Expected payment recipient when it differs from `agent_id`. Only needed
+   * on the explicit-`endpoint` path for sellers that publish a separate
+   * `payee`: the search path reads the signed payee from the listing itself.
+   */
+  payee?: AgentId;
   capability: CapabilityId;
   params: Record<string, unknown>;
   max_price_usdc: UsdcAmount;

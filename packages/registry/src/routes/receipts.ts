@@ -15,6 +15,12 @@ const ReceiptSchema = z.object({
   protocol_version: z.string().min(1),
   hire_id: z.string().min(1).max(128),
   agent_id: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+  // Settled payment recipient when split from seller identity (GH #11).
+  // Covered by the receipt signature; absent = payment went to agent_id.
+  payee: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .optional(),
   buyer: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   capability: z.string().min(1),
   capability_version: z.string().optional(),
@@ -91,6 +97,21 @@ export function createSubmitReceiptHandler(deps: SubmitReceiptDeps) {
         400,
       );
     }
+    // Same wash-trading block on the payee split: a seller may not claim
+    // they served a buyer who is also the declared payment recipient
+    // (buyer → payee with buyer == payee is the same zero-cost no-op).
+    if (
+      parsed.data.payee &&
+      parsed.data.payee.toLowerCase() === parsed.data.buyer.toLowerCase()
+    ) {
+      return c.json(
+        {
+          ok: false,
+          error: "Self-hire is not allowed: buyer and payee must differ",
+        },
+        400,
+      );
+    }
 
     const completedAtMs = Date.parse(parsed.data.completed_at);
     const ageMs = Date.now() - completedAtMs;
@@ -127,6 +148,44 @@ export function createSubmitReceiptHandler(deps: SubmitReceiptDeps) {
       return c.json({ ok: false, error: "Invalid signature" }, 401);
     }
 
+    // Payee consistency: when the seller has a live listing for this
+    // capability, the receipt's payee must be the SAME signed payee the
+    // listing binds (and buyers validated via anti-hijack) — not a second
+    // normalization of it. Sellers without a listing yet (first receipt
+    // before first publish) are exempt; reconciliation catches them later.
+    const receiptPayee = parsed.data.payee?.toLowerCase();
+    const listing = await store.getListing(
+      signerAddr.toLowerCase() as AgentId,
+      parsed.data.capability as CapabilityId,
+    );
+    if (listing && (listing.payee ?? undefined) !== receiptPayee) {
+      return c.json(
+        {
+          ok: false,
+          error: `Receipt payee ${receiptPayee ?? "(none)"} does not match the listing's signed payee ${listing.payee ?? "(none)"}`,
+        },
+        400,
+      );
+    }
+    // No backing listing: a payee claim has nothing signed to check against,
+    // so an arbitrary address would pollute the reconciliation signal. The
+    // payee split is declared listing-first — publish before submitting
+    // payee receipts. (agent_id-as-payee is the legacy case, harmless.)
+    if (
+      !listing &&
+      receiptPayee &&
+      receiptPayee !== signerAddr.toLowerCase()
+    ) {
+      return c.json(
+        {
+          ok: false,
+          error:
+            "Receipt payee requires a live listing binding that payee for this capability — publish the listing first",
+        },
+        400,
+      );
+    }
+
     // Auto-upsert: a brand-new seller may submit their first receipt before
     // any listing has been published. The signature gate above is the
     // authoritative ownership check.
@@ -136,6 +195,7 @@ export function createSubmitReceiptHandler(deps: SubmitReceiptDeps) {
       protocol_version: parsed.data.protocol_version,
       hire_id: parsed.data.hire_id,
       agent_id: signerAddr.toLowerCase() as AgentId,
+      ...(receiptPayee ? { payee: receiptPayee as AgentId } : {}),
       buyer: parsed.data.buyer.toLowerCase() as AgentId,
       capability: parsed.data.capability as CapabilityId,
       capability_version: parsed.data.capability_version,
@@ -196,6 +256,7 @@ export function createSubmitReceiptHandler(deps: SubmitReceiptDeps) {
         protocol_version: record.protocol_version,
         hire_id: record.hire_id,
         agent_id: record.agent_id,
+        payee: record.payee,
         buyer: record.buyer,
         capability: record.capability,
         capability_version: record.capability_version,

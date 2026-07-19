@@ -110,8 +110,13 @@ export interface ReceiptRecord {
   protocol_version: string;
   /** Idempotency key: SDK-generated UUID per hire attempt. */
   hire_id: string;
-  /** Seller (recipient of payment) — the signer. */
+  /** Seller identity — the signer. Payment recipient unless `payee` is set. */
   agent_id: AgentId;
+  /**
+   * Settled payment recipient when distinct from `agent_id` (GH #11).
+   * Must match the `payee` bound into the seller's signed listing.
+   */
+  payee?: AgentId;
   /** Buyer address (informational). */
   buyer: AgentId;
   capability: CapabilityId;
@@ -151,6 +156,13 @@ export interface RegistryStore {
   getListing(agentId: AgentId, capability: CapabilityId): Promise<Listing | null>;
   /** All listings for a single seller (read-only, no signature required). */
   getListingsByAgent(agentId: AgentId): Promise<Listing[]>;
+  /**
+   * Resolve a payment-recipient address to the agent that published a listing
+   * with that `payee` (GH #11). Powers the indexer's recipient→agent_id
+   * on-chain attribution for payee-split sellers. Returns null when no active
+   * listing declares the address as payee.
+   */
+  getAgentIdByPayee(payee: string): Promise<AgentId | null>;
   /**
    * Count of distinct `capability` strings across active listings. Powers
    * the `GET /v1/listings` documentation index so callers see how rich the

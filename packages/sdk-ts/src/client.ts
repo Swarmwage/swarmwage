@@ -278,6 +278,12 @@ export class AgentClient {
     //   - else search by capability (filtered by agent_id if provided)
     let sellerId = req.agent_id;
     let endpoint = req.endpoint;
+    // Expected x402 payTo: the listing's signed payee when the seller splits
+    // identity from revenue (GH #11), else the seller's agent_id. On the
+    // explicit-endpoint path there is no listing to read, so the caller may
+    // assert it via req.payee; default remains agent_id (fail-closed: a
+    // payee-seller hired that way is refused, never mis-paid).
+    let expectedPayTo = req.payee ?? sellerId;
     if (!endpoint) {
       const candidates = await this.search({
         capability: req.capability,
@@ -305,6 +311,7 @@ export class AgentClient {
       }
       sellerId = top.agent_id;
       endpoint = top.listing.endpoint;
+      expectedPayTo = top.listing.payee ?? top.agent_id;
     }
 
     // Anti-hijack: validate that the seller's x402 challenge demands payment
@@ -318,8 +325,9 @@ export class AgentClient {
       );
     }
     // The caller's max_price_usdc becomes the hard spend cap. Anti-hijack is
-    // enforced by passing expectedSellerId: the payment selector refuses to
-    // sign unless the seller's 402 challenge pays out to the resolved sellerId.
+    // enforced by passing expectedPayTo: the payment selector refuses to sign
+    // unless the seller's 402 challenge pays out to the signed listing payee
+    // (falling back to the resolved sellerId).
     const hireMaxValueAtomic = usdcStringToAtomic(req.max_price_usdc);
     // The payment selector throws SellerMismatchError on a payTo mismatch, but
     // @x402/fetch re-wraps it as a generic error; capture the structured one
@@ -330,7 +338,7 @@ export class AgentClient {
           account: this.wallet.account,
           network: this.network,
           maxValueAtomic: hireMaxValueAtomic,
-          expectedSellerId: sellerId,
+          expectedPayTo,
           facilitatorUrl: this.facilitatorUrl,
           onReject: (e) => {
             paymentRejection = e;
@@ -665,13 +673,14 @@ export class AgentClient {
 
     // Same anti-hijack + price-cap posture as the sync hire() path: the
     // payment selector refuses to sign unless the seller's 402 challenge
-    // pays out to the agent_id we resolved the listing from.
+    // pays out to the signed payee of the listing we just resolved (falling
+    // back to the agent_id we resolved the listing from).
     let paymentRejection: Error | undefined;
     const paidFetchForAsyncHire = buildPaidFetch({
       account: this.wallet.account,
       network: this.network,
       maxValueAtomic: usdcStringToAtomic(req.max_price_usdc),
-      expectedSellerId: req.agent_id,
+      expectedPayTo: listing.payee ?? req.agent_id,
       facilitatorUrl: this.facilitatorUrl,
       onReject: (e) => {
         paymentRejection = e;

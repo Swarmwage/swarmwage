@@ -38,6 +38,8 @@ export interface ReceiptCreatedEvent {
   protocol_version: string;
   hire_id: string;
   agent_id: string;
+  /** Settled payment recipient when split from agent_id (GH #11). */
+  payee?: string;
   buyer: string;
   capability: string;
   capability_version?: string;

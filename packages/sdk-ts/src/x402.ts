@@ -69,10 +69,13 @@ export interface BuildPaidFetchOptions {
    */
   maxValueAtomic: bigint;
   /**
-   * When set, the chosen requirement's `payTo` MUST equal this agent id
-   * (anti-hijack). Mismatch THROWS `SellerMismatchError` before any signature.
+   * When set, the chosen requirement's `payTo` MUST equal this address
+   * (anti-hijack). This is the listing's signed `payee` when present, else the
+   * seller's `agent_id` — the SAME signed tuple that receipts bind, never a
+   * separate normalization of it. Mismatch THROWS `SellerMismatchError`
+   * before any signature.
    */
-  expectedSellerId?: AgentId;
+  expectedPayTo?: AgentId;
   /** Advertised to facilitator-aware sellers via `requirement.extra`. */
   facilitatorUrl: string | null;
   /**
@@ -97,8 +100,8 @@ export interface BuildPaidFetchOptions {
  *  1. network-force — only requirements on the configured network are eligible
  *     (an attacker can't splice a cross-chain requirement to drain a wallet
  *     that holds funds elsewhere);
- *  2. anti-hijack — when `expectedSellerId` is set, `payTo` must match or it
- *     THROWS `SellerMismatchError`;
+ *  2. anti-hijack — when `expectedPayTo` is set (signed listing payee, falling
+ *     back to agent_id), `payTo` must match or it THROWS `SellerMismatchError`;
  *  3. spend cap — selecting a requirement above `maxValueAtomic` THROWS;
  *  4. facilitator hint — annotates `extra.swarmwageFacilitatorUrl` (the same
  *     hint the transport also sends as the `X-Swarmwage-Facilitator` header).
@@ -135,9 +138,9 @@ export function buildPaidFetch(opts: BuildPaidFetchOptions): typeof fetch {
       );
     }
 
-    // Anti-hijack: reject before signing if payTo isn't the expected seller.
-    if (opts.expectedSellerId) {
-      const expected = opts.expectedSellerId.toLowerCase();
+    // Anti-hijack: reject before signing if payTo isn't the signed recipient.
+    if (opts.expectedPayTo) {
+      const expected = opts.expectedPayTo.toLowerCase();
       const actual = String(chosen.payTo ?? "").toLowerCase();
       if (actual !== expected) {
         return reject(new SellerMismatchError(expected, actual || "(missing)"));

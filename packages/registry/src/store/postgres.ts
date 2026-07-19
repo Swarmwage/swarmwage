@@ -44,6 +44,7 @@ export interface PostgresStoreOptions {
 
 interface ListingRow {
   agent_id: string;
+  payee: string | null;
   capability: string;
   price_usdc: string;
   currency: string;
@@ -267,10 +268,11 @@ export class PostgresStore implements RegistryStore {
     await this.upsertAgent(agent_id as AgentId);
     await this.sql`
       INSERT INTO listings (
-        agent_id, capability, price_usdc, currency, chain,
+        agent_id, payee, capability, price_usdc, currency, chain,
         max_latency_ms, first_call_free, endpoint, signature, active
       ) VALUES (
         ${agent_id},
+        ${listing.payee?.toLowerCase() ?? null},
         ${listing.capability},
         ${listing.price_usdc},
         ${listing.currency},
@@ -282,7 +284,8 @@ export class PostgresStore implements RegistryStore {
         TRUE
       )
       ON CONFLICT (agent_id, capability) DO UPDATE
-        SET price_usdc = EXCLUDED.price_usdc,
+        SET payee = EXCLUDED.payee,
+            price_usdc = EXCLUDED.price_usdc,
             currency = EXCLUDED.currency,
             chain = EXCLUDED.chain,
             max_latency_ms = EXCLUDED.max_latency_ms,
@@ -294,13 +297,27 @@ export class PostgresStore implements RegistryStore {
     `;
   }
 
+  async getAgentIdByPayee(payee: string): Promise<AgentId | null> {
+    const needle = payee.toLowerCase();
+    // Publishing is free, so a second agent could claim a victim's payee to
+    // siphon their on-chain attribution. Refuse ambiguity: more than one
+    // distinct claimant ⇒ null (no attribution) rather than first-writer-wins.
+    const rows = await this.sql<{ agent_id: string }[]>`
+      SELECT DISTINCT agent_id FROM listings
+      WHERE payee = ${needle} AND active
+      LIMIT 2
+    `;
+    if (rows.length !== 1) return null;
+    return (rows[0]?.agent_id as AgentId) ?? null;
+  }
+
   async getListing(
     agentId: AgentId,
     capability: CapabilityId,
   ): Promise<Listing | null> {
     const id = agentId.toLowerCase();
     const rows = await this.sql<ListingRow[]>`
-      SELECT agent_id, capability, price_usdc, currency, chain,
+      SELECT agent_id, payee, capability, price_usdc, currency, chain,
              max_latency_ms, first_call_free, endpoint, signature
       FROM listings
       WHERE agent_id = ${id} AND capability = ${capability} AND active
@@ -314,7 +331,7 @@ export class PostgresStore implements RegistryStore {
   async getListingsByAgent(agentId: AgentId): Promise<Listing[]> {
     const id = agentId.toLowerCase();
     const rows = await this.sql<ListingRow[]>`
-      SELECT agent_id, capability, price_usdc, currency, chain,
+      SELECT agent_id, payee, capability, price_usdc, currency, chain,
              max_latency_ms, first_call_free, endpoint, signature
       FROM listings
       WHERE agent_id = ${id} AND active
@@ -386,7 +403,7 @@ export class PostgresStore implements RegistryStore {
 
     const rows = await this.sql<(ListingRow & ReputationRow)[]>`
       SELECT
-        l.agent_id, l.capability, l.price_usdc, l.currency, l.chain,
+        l.agent_id, l.payee, l.capability, l.price_usdc, l.currency, l.chain,
         l.max_latency_ms, l.first_call_free, l.endpoint, l.signature,
         r.claimed,
         r.success_rate,
@@ -424,6 +441,7 @@ export class PostgresStore implements RegistryStore {
         max_latency_ms: row.max_latency_ms,
         first_call_free: row.first_call_free,
         endpoint: row.endpoint,
+        ...(row.payee ? { payee: row.payee as AgentId } : {}),
       },
       reputation: {
         success_rate: Number(row.success_rate),
@@ -543,7 +561,7 @@ export class PostgresStore implements RegistryStore {
     // duplicate; one on the happy path.
     const inserted = await this.sql<{ id: string }[]>`
       INSERT INTO receipts (
-        protocol_version, hire_id, agent_id, buyer, capability,
+        protocol_version, hire_id, agent_id, payee, buyer, capability,
         capability_version, amount_usdc_atomic, network, tx_hash,
         completed_at, verification_all_passed, verification_checks,
         signature
@@ -551,6 +569,7 @@ export class PostgresStore implements RegistryStore {
         ${receipt.protocol_version},
         ${receipt.hire_id},
         ${seller},
+        ${receipt.payee?.toLowerCase() ?? null},
         ${buyer},
         ${receipt.capability},
         ${receipt.capability_version ?? null},
@@ -595,6 +614,7 @@ export class PostgresStore implements RegistryStore {
         protocol_version: string;
         hire_id: string;
         agent_id: string;
+        payee: string | null;
         buyer: string;
         capability: string;
         capability_version: string | null;
@@ -608,7 +628,7 @@ export class PostgresStore implements RegistryStore {
         ts: Date;
       }>
     >`
-      SELECT id, protocol_version, hire_id, agent_id, buyer, capability,
+      SELECT id, protocol_version, hire_id, agent_id, payee, buyer, capability,
              capability_version, amount_usdc_atomic, network, tx_hash,
              completed_at, verification_all_passed, verification_checks,
              signature, ts
@@ -622,6 +642,7 @@ export class PostgresStore implements RegistryStore {
       protocol_version: row.protocol_version,
       hire_id: row.hire_id,
       agent_id: row.agent_id as AgentId,
+      ...(row.payee ? { payee: row.payee as AgentId } : {}),
       buyer: row.buyer as AgentId,
       capability: row.capability as CapabilityId,
       capability_version: row.capability_version ?? undefined,
@@ -834,6 +855,7 @@ export class PostgresStore implements RegistryStore {
 function rowToListing(row: ListingRow): Listing {
   return {
     agent_id: row.agent_id as AgentId,
+    ...(row.payee ? { payee: row.payee as AgentId } : {}),
     capability: row.capability as CapabilityId,
     price_usdc: row.price_usdc as UsdcAmount,
     currency: row.currency as "USDC",
